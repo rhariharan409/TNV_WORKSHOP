@@ -347,10 +347,11 @@ CREATE POLICY "Only admins record attendance"
     USING (public.is_admin());
 
 -- CERTIFICATES
--- Public can verify by certificate number or student can view own
-CREATE POLICY "Certificates viewable by owner or admin"
+-- CERTIFICATES
+-- Public can verify by certificate number; students and admins can view
+CREATE POLICY "Certificates viewable by everyone for verification"
     ON public.certificates FOR SELECT
-    USING (student_id = auth.uid() OR public.is_admin());
+    USING (TRUE);
 
 CREATE POLICY "Admins manage certificates"
     ON public.certificates FOR ALL
@@ -381,4 +382,144 @@ CREATE POLICY "Admin settings readable by authenticated; writable by admin"
 
 CREATE POLICY "Only admins modify admin settings"
     ON public.admin_settings FOR ALL
+    USING (public.is_admin());
+
+-- COURSE ENROLLMENTS
+CREATE POLICY "Students view own course enrollments; Admins view all"
+    ON public.course_enrollments FOR SELECT
+    USING (student_id = auth.uid() OR public.is_admin());
+
+CREATE POLICY "Admins manage course enrollments"
+    ON public.course_enrollments FOR ALL
+    USING (public.is_admin());
+
+-- ASSIGNMENT QUESTIONS
+CREATE POLICY "Assignment questions viewable by approved students"
+    ON public.assignment_questions FOR SELECT
+    USING (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.assignments a
+            WHERE a.id = assignment_questions.assignment_id
+              AND a.is_published = TRUE
+              AND public.has_approved_course_access(a.course_id)
+        )
+    );
+
+CREATE POLICY "Admins manage assignment questions"
+    ON public.assignment_questions FOR ALL
+    USING (public.is_admin());
+
+-- QUIZZES & QUESTIONS
+CREATE POLICY "Quizzes viewable by approved students"
+    ON public.quizzes FOR SELECT
+    USING (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.modules m
+            WHERE m.id = quizzes.module_id
+              AND m.is_published = TRUE
+              AND public.has_approved_course_access(m.course_id)
+        )
+    );
+
+CREATE POLICY "Admins manage quizzes"
+    ON public.quizzes FOR ALL
+    USING (public.is_admin());
+
+CREATE POLICY "Quiz questions viewable by approved students"
+    ON public.quiz_questions FOR SELECT
+    USING (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.quizzes q
+            JOIN public.modules m ON m.id = q.module_id
+            WHERE q.id = quiz_questions.quiz_id
+              AND m.is_published = TRUE
+              AND public.has_approved_course_access(m.course_id)
+        )
+    );
+
+CREATE POLICY "Admins manage quiz questions"
+    ON public.quiz_questions FOR ALL
+    USING (public.is_admin());
+
+-- QUIZ ATTEMPTS & ANSWERS
+CREATE POLICY "Quiz attempts viewable by owner or admin"
+    ON public.quiz_attempts FOR SELECT
+    USING (student_id = auth.uid() OR public.is_admin());
+
+CREATE POLICY "Students can start and update quiz attempts"
+    ON public.quiz_attempts FOR ALL
+    USING (student_id = auth.uid() OR public.is_admin());
+
+CREATE POLICY "Quiz answers viewable by owner or admin"
+    ON public.quiz_answers FOR SELECT
+    USING (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.quiz_attempts qa
+            WHERE qa.id = quiz_answers.attempt_id
+              AND qa.student_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Students can record quiz answers"
+    ON public.quiz_answers FOR INSERT
+    WITH CHECK (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.quiz_attempts qa
+            WHERE qa.id = quiz_answers.attempt_id
+              AND qa.student_id = auth.uid()
+        )
+    );
+
+-- EXAM QUESTIONS & ANSWERS
+CREATE POLICY "Exam questions viewable by approved students"
+    ON public.exam_questions FOR SELECT
+    USING (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.examinations e
+            WHERE e.id = exam_questions.exam_id
+              AND e.is_published = TRUE
+              AND public.has_approved_course_access(e.course_id)
+        )
+    );
+
+CREATE POLICY "Admins manage exam questions"
+    ON public.exam_questions FOR ALL
+    USING (public.is_admin());
+
+CREATE POLICY "Exam answers viewable by owner or admin"
+    ON public.exam_answers FOR SELECT
+    USING (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.exam_attempts ea
+            WHERE ea.id = exam_answers.attempt_id
+              AND ea.student_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Students can submit exam answers"
+    ON public.exam_answers FOR INSERT
+    WITH CHECK (
+        public.is_admin() OR EXISTS (
+            SELECT 1 FROM public.exam_attempts ea
+            WHERE ea.id = exam_answers.attempt_id
+              AND ea.student_id = auth.uid()
+        )
+    );
+
+-- ACTIVITY LOGS
+CREATE POLICY "Activity logs viewable by owner or admin"
+    ON public.activity_logs FOR SELECT
+    USING (user_id = auth.uid() OR public.is_admin());
+
+CREATE POLICY "Activity logs can be inserted by authenticated user or admin"
+    ON public.activity_logs FOR INSERT
+    WITH CHECK (user_id = auth.uid() OR public.is_admin());
+
+-- CERTIFICATE TEMPLATES
+CREATE POLICY "Certificate templates viewable by authenticated users"
+    ON public.certificate_templates FOR SELECT
+    USING (TRUE);
+
+CREATE POLICY "Admins manage certificate templates"
+    ON public.certificate_templates FOR ALL
     USING (public.is_admin());

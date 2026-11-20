@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
+import { ConfigBanner } from './components/common/ConfigBanner';
 
 // Layouts
 import { PublicLayout } from './layouts/PublicLayout';
@@ -59,6 +60,7 @@ export function App() {
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
+          <ConfigBanner />
           <Routes>
             {/* PUBLIC WEBSITE EXPERIENCE */}
             <Route path="/" element={<PublicLayout />}>

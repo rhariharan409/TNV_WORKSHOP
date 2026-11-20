@@ -23,10 +23,11 @@ BEGIN
     v_year := new.raw_user_meta_data->>'year_of_study';
     v_workshop_id := new.raw_user_meta_data->>'workshop_id';
 
-    -- Check if first user or explicitly designated admin
-    IF (new.raw_user_meta_data->>'role') = 'admin' OR (new.raw_user_meta_data->>'role') = 'super_admin' THEN
-        v_role := (new.raw_user_meta_data->>'role')::user_role;
-    END IF;
+    -- SECURITY ENFORCEMENT:
+    -- All self-registering users through auth signup are strictly assigned the 'student' role.
+    -- Administrator roles ('admin', 'super_admin') must be explicitly provisioned via SQL
+    -- or promoted by an existing administrator to prevent privilege escalation attacks.
+    v_role := 'student'::user_role;
 
     -- Insert into profiles
     INSERT INTO public.profiles (
