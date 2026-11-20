@@ -171,3 +171,5 @@ The TNV Workshop application is architected for modular integration into the fut
 - Auth logic is decoupled inside `src/context/AuthContext.tsx`.
 - User profiles maintain universal identifiers (`UUID`).
 - APIs and service providers are abstracted behind `src/lib/dataProvider.ts`, ready for future SSO (Single Sign-On) and OAuth2 providers.
+#   T N V _ W O R K S H O P  
+ 
