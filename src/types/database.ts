@@ -1,0 +1,454 @@
+// ==============================================================================
+// TNV WORKSHOP LEARNING MANAGEMENT SYSTEM (LMS)
+// Comprehensive TypeScript Definitions for all 32 Database Entities
+// ==============================================================================
+
+export type UserRole = 'student' | 'admin' | 'super_admin';
+
+export type EnrollmentStatus =
+  | 'registered'
+  | 'payment_pending'
+  | 'payment_verification_pending'
+  | 'approved'
+  | 'rejected'
+  | 'suspended';
+
+export type PaymentStatus = 'pending' | 'verified' | 'rejected';
+
+export type AssignmentStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'submitted'
+  | 'under_review'
+  | 'evaluated'
+  | 'late';
+
+export type ProjectStatus =
+  | 'not_submitted'
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'resubmission_required';
+
+export type ExamStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'submitted'
+  | 'evaluated'
+  | 'timed_out';
+
+export type AttendanceStatus = 'present' | 'absent' | 'excused';
+
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export type FeedbackCategory =
+  | 'complaint'
+  | 'technical_issue'
+  | 'improvement'
+  | 'general';
+
+export type NotificationType = 'info' | 'success' | 'warning' | 'alert';
+
+export interface Profile {
+  id: string;
+  email: string;
+  full_name: string;
+  phone?: string | null;
+  college_name?: string | null;
+  department?: string | null;
+  year_of_study?: string | null;
+  role: UserRole;
+  avatar_url?: string | null;
+  is_suspended?: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface Workshop {
+  id: string;
+  title: string;
+  slug: string;
+  short_description?: string | null;
+  description: string;
+  thumbnail_url?: string | null;
+  duration: string;
+  instructor_name: string;
+  instructor_title?: string | null;
+  instructor_bio?: string | null;
+  instructor_avatar_url?: string | null;
+  total_seats: number;
+  available_seats: number;
+  price: number;
+  is_active: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface WorkshopEnrollment {
+  id: string;
+  workshop_id: string;
+  student_id: string;
+  status: EnrollmentStatus;
+  registered_at: string;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  rejection_reason?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string;
+  workshop?: Workshop;
+  student?: Profile;
+}
+
+export interface Payment {
+  id: string;
+  enrollment_id: string;
+  student_id: string;
+  amount: number;
+  currency: string;
+  payment_method: string;
+  transaction_reference?: string | null;
+  payment_proof_url?: string | null;
+  status: PaymentStatus;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  admin_notes?: string | null;
+  created_at: string;
+  student?: Profile;
+}
+
+export interface Course {
+  id: string;
+  workshop_id: string;
+  title: string;
+  slug: string;
+  description?: string | null;
+  instructor_name?: string | null;
+  duration?: string | null;
+  order_index: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at?: string;
+  workshop?: Workshop;
+  modules?: Module[];
+}
+
+export interface CourseEnrollment {
+  id: string;
+  course_id: string;
+  student_id: string;
+  progress_percentage: number;
+  is_completed: boolean;
+  enrolled_at: string;
+  completed_at?: string | null;
+}
+
+export interface Module {
+  id: string;
+  course_id: string;
+  title: string;
+  description?: string | null;
+  order_index: number;
+  is_published: boolean;
+  created_at: string;
+  sessions?: Session[];
+}
+
+export interface Session {
+  id: string;
+  module_id: string;
+  title: string;
+  description?: string | null;
+  session_type: 'lecture' | 'reading' | 'assignment' | 'quiz';
+  order_index: number;
+  duration_minutes: number;
+  is_published: boolean;
+  created_at: string;
+  video_lecture?: VideoLecture | null;
+  learning_materials?: LearningMaterial[];
+  is_completed?: boolean;
+}
+
+export interface VideoLecture {
+  id: string;
+  session_id: string;
+  title: string;
+  description?: string | null;
+  drive_url: string;
+  drive_file_id?: string | null;
+  duration_minutes: number;
+  is_available: boolean;
+  created_at: string;
+}
+
+export interface LearningMaterial {
+  id: string;
+  session_id?: string | null;
+  module_id?: string | null;
+  course_id: string;
+  title: string;
+  description?: string | null;
+  file_url?: string | null;
+  file_type?: string | null;
+  file_size_bytes?: number | null;
+  external_link?: string | null;
+  is_downloadable: boolean;
+  created_at: string;
+}
+
+export interface SessionProgress {
+  id: string;
+  student_id: string;
+  session_id: string;
+  is_completed: boolean;
+  completed_at?: string | null;
+  last_accessed_at?: string | null;
+  notes?: string | null;
+}
+
+export interface Assignment {
+  id: string;
+  course_id: string;
+  module_id?: string | null;
+  session_id?: string | null;
+  title: string;
+  description: string;
+  instructions?: string | null;
+  assignment_type: string;
+  max_marks: number;
+  passing_marks: number;
+  start_date?: string | null;
+  due_date: string;
+  is_published: boolean;
+  created_at: string;
+  course?: Course;
+  questions?: AssignmentQuestion[];
+  submission?: AssignmentSubmission | null;
+}
+
+export interface AssignmentQuestion {
+  id: string;
+  assignment_id: string;
+  question_number: number;
+  question_text: string;
+  question_type: string;
+  max_marks: number;
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  submission_text?: string | null;
+  file_url?: string | null;
+  status: AssignmentStatus;
+  marks_obtained?: number | null;
+  feedback?: string | null;
+  submitted_at: string;
+  evaluated_at?: string | null;
+  evaluated_by?: string | null;
+  student?: Profile;
+  assignment?: Assignment;
+}
+
+export interface Quiz {
+  id: string;
+  course_id: string;
+  module_id?: string | null;
+  session_id?: string | null;
+  title: string;
+  description?: string | null;
+  time_limit_minutes: number;
+  passing_percentage: number;
+  is_published: boolean;
+  created_at: string;
+  questions?: QuizQuestion[];
+  latest_attempt?: QuizAttempt | null;
+}
+
+export interface QuizQuestion {
+  id: string;
+  quiz_id: string;
+  question_text: string;
+  options: string[];
+  correct_option_index?: number; // Only for admin
+  explanation?: string | null;
+  marks: number;
+  order_index: number;
+}
+
+export interface QuizAttempt {
+  id: string;
+  quiz_id: string;
+  student_id: string;
+  score: number;
+  total_marks: number;
+  percentage: number;
+  is_passed: boolean;
+  started_at: string;
+  submitted_at?: string | null;
+  status: string;
+}
+
+export interface Project {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string;
+  requirements: string;
+  submission_deadline: string;
+  max_marks: number;
+  passing_marks: number;
+  is_published: boolean;
+  created_at: string;
+  course?: Course;
+  submission?: ProjectSubmission | null;
+}
+
+export interface ProjectSubmission {
+  id: string;
+  project_id: string;
+  student_id: string;
+  project_title: string;
+  project_description: string;
+  github_url: string;
+  live_demo_url?: string | null;
+  document_url?: string | null;
+  status: ProjectStatus;
+  marks_obtained?: number | null;
+  feedback?: string | null;
+  submitted_at: string;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  student?: Profile;
+  project?: Project;
+}
+
+export interface Examination {
+  id: string;
+  course_id: string;
+  title: string;
+  description?: string | null;
+  instructions?: string | null;
+  duration_minutes: number;
+  total_marks: number;
+  passing_marks: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  is_published: boolean;
+  created_at: string;
+  course?: Course;
+  questions?: ExamQuestion[];
+  latest_attempt?: ExamAttempt | null;
+}
+
+export interface ExamQuestion {
+  id: string;
+  exam_id: string;
+  question_text: string;
+  options: string[];
+  correct_option_index?: number; // Admin only or post evaluation
+  marks: number;
+  order_index: number;
+}
+
+export interface ExamAttempt {
+  id: string;
+  exam_id: string;
+  student_id: string;
+  score: number;
+  total_marks: number;
+  percentage: number;
+  is_passed: boolean;
+  started_at: string;
+  submitted_at?: string | null;
+  status: ExamStatus;
+  student?: Profile;
+  examination?: Examination;
+}
+
+export interface LiveSession {
+  id: string;
+  course_id: string;
+  module_id?: string | null;
+  title: string;
+  description?: string | null;
+  scheduled_date: string;
+  start_time: string;
+  end_time: string;
+  meeting_link: string;
+  platform: string;
+  instructor_name?: string | null;
+  is_published: boolean;
+  created_at: string;
+  course?: Course;
+  attendance_status?: AttendanceStatus;
+}
+
+export interface Attendance {
+  id: string;
+  live_session_id: string;
+  student_id: string;
+  status: AttendanceStatus;
+  marked_at: string;
+  marked_by?: string | null;
+  remarks?: string | null;
+  student?: Profile;
+  live_session?: LiveSession;
+}
+
+export interface Certificate {
+  id: string;
+  certificate_number: string;
+  student_id: string;
+  workshop_id: string;
+  course_id?: string | null;
+  issue_date: string;
+  completion_date: string;
+  pdf_url?: string | null;
+  status: 'issued' | 'revoked';
+  revoked_reason?: string | null;
+  created_at: string;
+  student?: Profile;
+  workshop?: Workshop;
+}
+
+export interface Feedback {
+  id: string;
+  student_id: string;
+  category: FeedbackCategory;
+  subject: string;
+  description: string;
+  status: FeedbackStatus;
+  admin_response?: string | null;
+  responded_by?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  student?: Profile;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  link_url?: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface AdminSettings {
+  whatsapp_group_url: string;
+  support_email: string;
+  support_phone: string;
+  payment_upi_id: string;
+  payment_qr_code_url: string;
+  certificate_signatory?: string;
+  certificate_title?: string;
+  min_attendance_percentage?: number;
+  min_exam_percentage?: number;
+}
