@@ -7,8 +7,7 @@ import { RoleSwitcherBanner } from '../components/ui/RoleSwitcherBanner';
 export const AdminLayout: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors">
-      <RoleSwitcherBanner />
-      <div className="flex flex-1 min-h-[calc(100vh-33px)]">
+      <div className="flex flex-1 min-h-screen">
         <AdminSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <DashboardHeader />

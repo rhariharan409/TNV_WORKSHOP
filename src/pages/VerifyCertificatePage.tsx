@@ -9,46 +9,51 @@ import { Award, CheckCircle2, XCircle, Download, Search, ShieldCheck } from 'luc
 
 export const VerifyCertificatePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [searchId, setSearchId] = useState(id || 'TNV-2024-A8F29C14');
-  const [cert, setCert] = useState<Certificate | null>(null);
+  const [searchId, setSearchId] = useState(id || '');
+  const [verifiedCert, setVerifiedCert] = useState<any>(null);
   const [searched, setSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const performVerification = async (certId: string) => {
+    if (!certId.trim()) return;
     setIsLoading(true);
     setSearched(true);
-    const certificates = await dataProvider.getCertificates();
-    const found = certificates.find(
-      (c) => c.certificate_number.toLowerCase() === certId.trim().toLowerCase()
-    );
-    setCert(found || null);
-    setIsLoading(false);
+    try {
+      const result = await dataProvider.verifyCertificate(certId.trim());
+      setVerifiedCert(result);
+    } catch (err) {
+      console.error('Error during certificate verification:', err);
+      setVerifiedCert(null);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     if (id) {
+      setSearchId(id);
       performVerification(id);
     }
   }, [id]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchId) {
+    if (searchId.trim()) {
       performVerification(searchId);
     }
   };
 
   const handleDownloadPDF = () => {
-    if (!cert) return;
+    if (!verifiedCert) return;
     downloadCertificate({
-      studentName: cert.student?.full_name || 'TNV Student',
-      collegeName: cert.student?.college_name || 'Engineering College',
-      department: cert.student?.department || 'Information Technology',
-      workshopTitle: cert.workshop?.title || 'Advanced Technical Workshop',
-      certificateNumber: cert.certificate_number,
-      completionDate: cert.completion_date,
-      issueDate: cert.issue_date,
-      signatoryName: 'Dr. T. N. Venkatesh',
+      studentName: verifiedCert.student_name || 'Enrolled Student',
+      collegeName: 'Verified TNV Workshop Scholar',
+      department: 'Technology & Computing',
+      workshopTitle: verifiedCert.workshop_title || 'TNV Workshop Program',
+      certificateNumber: verifiedCert.certificate_number,
+      completionDate: verifiedCert.completion_date || verifiedCert.issue_date,
+      issueDate: verifiedCert.issue_date,
+      signatoryName: 'Thamilaran',
       signatoryTitle: 'Program Director & Chief Architect',
     });
   };
@@ -73,7 +78,7 @@ export const VerifyCertificatePage: React.FC = () => {
           type="text"
           value={searchId}
           onChange={(e) => setSearchId(e.target.value)}
-          placeholder="e.g. TNV-2024-A8F29C14"
+          placeholder="e.g. TNV-2024-89312"
           className="flex-1 h-11 px-4 rounded-xl border border-slate-300 bg-white text-sm uppercase font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
           required
         />
@@ -85,7 +90,7 @@ export const VerifyCertificatePage: React.FC = () => {
       {/* Verification Result Display */}
       {searched && (
         <div className="pt-4 animate-in fade-in duration-300">
-          {cert && cert.status === 'issued' ? (
+          {verifiedCert && (verifiedCert.is_valid || verifiedCert.status === 'issued') ? (
             <Card className="border-emerald-200 bg-emerald-50/30 dark:border-emerald-900/60 dark:bg-emerald-950/20 overflow-hidden shadow-lg max-w-2xl mx-auto">
               <div className="p-6 sm:p-8 space-y-6">
                 <div className="flex items-center justify-between border-b border-emerald-200/60 dark:border-emerald-800/60 pb-4">
@@ -98,7 +103,7 @@ export const VerifyCertificatePage: React.FC = () => {
                         Official Credential Verified
                       </h3>
                       <p className="font-mono text-xs text-emerald-700 dark:text-emerald-400">
-                        {cert.certificate_number}
+                        {verifiedCert.certificate_number}
                       </p>
                     </div>
                   </div>
@@ -111,28 +116,28 @@ export const VerifyCertificatePage: React.FC = () => {
                   <div>
                     <span className="text-slate-500 block">Recipient Name:</span>
                     <span className="font-bold text-slate-900 dark:text-white text-sm">
-                      {cert.student?.full_name || 'Enrolled Student'}
+                      {verifiedCert.student_name || 'Enrolled Student'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Institution:</span>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      {cert.student?.college_name || 'PSG College of Technology'}
+                    <span className="text-slate-500 block">Credential Status:</span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400 capitalize">
+                      {verifiedCert.status || 'Active'}
                     </span>
                   </div>
                   <div className="col-span-2">
                     <span className="text-slate-500 block">Workshop Title:</span>
                     <span className="font-bold text-brand-600 dark:text-brand-400 text-sm">
-                      {cert.workshop?.title || 'Full-Stack Cloud & AI Engineering'}
+                      {verifiedCert.workshop_title || 'TNV Workshop Curriculum'}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-500 block">Issue Date:</span>
-                    <span className="font-medium text-slate-900 dark:text-white">{cert.issue_date}</span>
+                    <span className="font-medium text-slate-900 dark:text-white">{verifiedCert.issue_date}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block">Signatory:</span>
-                    <span className="font-medium text-slate-900 dark:text-white">Dr. T. N. Venkatesh</span>
+                    <span className="font-medium text-slate-900 dark:text-white">Thamilaran</span>
                   </div>
                 </div>
 

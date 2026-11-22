@@ -107,7 +107,7 @@ export function generateCertificatePDF(data: CertificateData): jsPDF {
     { align: "center" }
   );
   doc.text(
-    "technical assignments, comprehensive examinations, and capstone project in",
+    "technical assignments, comprehensive examinations, and practical coursework in",
     width / 2,
     115,
     { align: "center" }
@@ -138,12 +138,12 @@ export function generateCertificatePDF(data: CertificateData): jsPDF {
   doc.setFont("times", "bolditalic");
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
-  doc.text("Dr. T. N. Venkatesh", 65, 173, { align: "center" });
+  doc.text("Thamilaran", 65, 173, { align: "center" });
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
-  doc.text(data.signatoryName || "Dr. T. N. Venkatesh", 65, 182, { align: "center" });
+  doc.text(data.signatoryName || "Thamilaran", 65, 182, { align: "center" });
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);

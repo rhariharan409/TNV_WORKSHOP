@@ -26,19 +26,19 @@ export const ContactPage: React.FC = () => {
         {/* Info Column */}
         <div className="md:col-span-5 space-y-6">
           <Card className="p-6 space-y-4">
-            <h3 className="font-bold text-sm text-slate-900 dark:text-white">Help Desk Details</h3>
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white">TNV Trust Coordination Desk</h3>
             <div className="space-y-4 text-xs text-slate-600 dark:text-slate-400">
               <div className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-brand-600 shrink-0" />
-                <span>support@tnvworkshop.edu.in</span>
+                <Mail className="w-4 h-4 text-brand-green shrink-0" />
+                <span>support@tnvolunteers.in</span>
               </div>
               <div className="flex items-center gap-3">
-                <Phone className="w-4 h-4 text-brand-600 shrink-0" />
-                <span>+91 98765 43210 (Mon-Sat 9AM-7PM)</span>
+                <Phone className="w-4 h-4 text-brand-green shrink-0" />
+                <span>+91 90872 93339 (Official TNV Helpline)</span>
               </div>
               <div className="flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-brand-600 shrink-0 mt-0.5" />
-                <span>TNV Workshop Center, Guindy Industrial Estate, Chennai, Tamil Nadu 600032</span>
+                <MapPin className="w-4 h-4 text-brand-green shrink-0 mt-0.5" />
+                <span>Tamilnadu Volunteers Trust, No. 34, CIT Nagar 1st Main Road, CIT Nagar West, CIT Nagar, Chennai, Tamil Nadu 600035</span>
               </div>
             </div>
 
@@ -58,7 +58,7 @@ export const ContactPage: React.FC = () => {
 
         {/* Form Column */}
         <div className="md:col-span-7">
-          <Card className="p-6">
+          <Card wavy className="p-6">
             <CardHeader className="p-0 pb-4">
               <CardTitle className="text-lg">Send a Direct Message</CardTitle>
               <CardDescription className="text-xs">We typically respond within 2-4 business hours.</CardDescription>
@@ -96,7 +96,7 @@ export const ContactPage: React.FC = () => {
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Ask about workshops, payment verification, or syllabus..."
-                      className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                      className="w-full rounded-2xl border-none bg-[#eef3f8] dark:bg-slate-800 p-3.5 text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
                       required
                     ></textarea>
                   </div>

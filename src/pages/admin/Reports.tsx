@@ -10,7 +10,6 @@ import {
   Users,
   CheckCircle2,
   FileCheck2,
-  FolderGit2,
   GraduationCap,
   Award,
   Video,
@@ -20,7 +19,6 @@ import {
 export const AdminReports: React.FC = () => {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [certificates, setCertificates] = useState<any[]>([]);
@@ -29,14 +27,12 @@ export const AdminReports: React.FC = () => {
     Promise.all([
       dataProvider.getEnrollments(),
       dataProvider.getAssignmentSubmissions(),
-      dataProvider.getProjectSubmissions(),
       dataProvider.getExamAttempts(),
       dataProvider.getAttendance(),
       dataProvider.getCertificates(),
-    ]).then(([enrs, subs, projs, exms, atts, certs]) => {
+    ]).then(([enrs, subs, exms, atts, certs]) => {
       setEnrollments(enrs);
       setSubmissions(subs);
-      setProjects(projs);
       setExams(exms);
       setAttendance(atts);
       setCertificates(certs);
@@ -70,21 +66,6 @@ export const AdminReports: React.FC = () => {
       Feedback: s.feedback || 'None',
     }));
     exportToCSV('TNV_Assignment_Submissions_Report', rows);
-  };
-
-  const handleExportProjects = () => {
-    const rows = projects.map((p) => ({
-      Project_ID: p.id,
-      Student: p.student?.full_name,
-      Email: p.student?.email,
-      Project_Title: p.project_title,
-      GitHub_URL: p.github_url,
-      Live_Demo_URL: p.live_demo_url || 'N/A',
-      Status: p.status,
-      Marks: p.marks_obtained,
-      Submitted_At: p.submitted_at,
-    }));
-    exportToCSV('TNV_Capstone_Projects_Report', rows);
   };
 
   const handleExportExams = () => {
@@ -140,13 +121,6 @@ export const AdminReports: React.FC = () => {
       count: submissions.length,
       icon: FileCheck2,
       action: handleExportSubmissions,
-    },
-    {
-      title: 'Capstone Project Submissions & Codebase Report',
-      description: 'GitHub repository links, live Vercel deployments, grading scores, and architect approvals.',
-      count: projects.length,
-      icon: FolderGit2,
-      action: handleExportProjects,
     },
     {
       title: 'Examination Performance & Score Report',

@@ -1,13 +1,11 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
   BookOpen,
-  Layers,
   FileText,
   FileCheck2,
-  FolderGit2,
   GraduationCap,
   Video,
   UserCheck,
@@ -17,6 +15,7 @@ import {
   Settings,
   LogOut,
   ShieldCheck,
+  Eye,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -26,12 +25,10 @@ export const AdminSidebar: React.FC = () => {
 
   const links = [
     { name: 'Dashboard & Analytics', href: '/admin/dashboard', icon: LayoutDashboard },
+    { name: 'Courses', href: '/admin/courses', icon: BookOpen },
     { name: 'Student Management', href: '/admin/students', icon: Users },
-    { name: 'Workshops & Courses', href: '/admin/courses', icon: BookOpen },
-    { name: 'Modules & Sessions', href: '/admin/modules', icon: Layers },
     { name: 'Assignment Manager', href: '/admin/assignments', icon: FileText },
     { name: 'Submissions & Grading', href: '/admin/submissions', icon: FileCheck2 },
-    { name: 'Project Submissions', href: '/admin/projects', icon: FolderGit2 },
     { name: 'Examination Center', href: '/admin/examinations', icon: GraduationCap },
     { name: 'Live Sessions', href: '/admin/live-sessions', icon: Video },
     { name: 'Attendance Records', href: '/admin/attendance', icon: UserCheck },
@@ -44,16 +41,25 @@ export const AdminSidebar: React.FC = () => {
   return (
     <aside className="w-64 border-r border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 flex flex-col shrink-0 min-h-screen">
       {/* Brand Header */}
-      <div className="h-16 px-6 flex items-center gap-3 border-b border-slate-100 dark:border-slate-800">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm font-bold">
-          <ShieldCheck className="w-5 h-5" />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white">TNV Workshop</h2>
-          <span className="text-[10px] font-semibold tracking-wider text-amber-600 dark:text-amber-400 uppercase">
+      <div className="h-16 px-5 flex items-center gap-3 border-b border-slate-100 dark:border-slate-800">
+        <img src="/tnv-logo.png" alt="TNV Logo" className="w-9 h-9 rounded-full object-contain shrink-0 shadow-xs" />
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">TNV Workshop</h2>
+          <span className="text-[10px] font-semibold tracking-wider text-amber-700 dark:text-brand-yellow uppercase">
             Admin Console
           </span>
         </div>
+      </div>
+
+      {/* Switch to Student View Banner */}
+      <div className="p-3 bg-amber-50/70 dark:bg-amber-950/40 border-b border-amber-200/70 dark:border-amber-800/60">
+        <Link
+          to="/student/dashboard"
+          className="w-full py-2 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 active:scale-95"
+        >
+          <Eye className="w-4 h-4 text-[#1b6b3a]" />
+          <span>Switch to Student View</span>
+        </Link>
       </div>
 
       {/* Navigation Links */}
@@ -66,10 +72,10 @@ export const AdminSidebar: React.FC = () => {
               to={item.href}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-colors',
+                  'flex items-center gap-3 px-3 py-2 rounded-xl text-xs transition-colors',
                   isActive
-                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:bg-slate-800/60'
+                    ? 'bg-brand-yellow-tint text-amber-900 dark:bg-amber-950/50 dark:text-brand-yellow font-bold border-l-4 border-brand-yellow shadow-xs'
+                    : 'font-semibold text-slate-600 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:bg-slate-800/60'
                 )
               }
             >

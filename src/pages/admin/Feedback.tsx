@@ -70,39 +70,47 @@ export const AdminFeedback: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-              {feedbacks.map((fb) => (
-                <tr key={fb.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3.5 px-4">
-                    <span className="font-bold text-slate-900 dark:text-white block">{fb.student?.full_name}</span>
-                    <span className="text-[11px] text-slate-400">{fb.student?.email}</span>
-                  </td>
-
-                  <td className="py-3.5 px-4 whitespace-nowrap">
-                    <Badge variant="outline" className="capitalize">
-                      {fb.category.replace('_', ' ')}
-                    </Badge>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <span className="font-bold text-slate-900 dark:text-white block">{fb.subject}</span>
-                    <p className="text-[11px] text-slate-500 line-clamp-1">{fb.description}</p>
-                  </td>
-
-                  <td className="py-3.5 px-4 whitespace-nowrap text-slate-500">
-                    {formatDate(fb.created_at)}
-                  </td>
-
-                  <td className="py-3.5 px-4 whitespace-nowrap">
-                    <StatusBadge status={fb.status} />
-                  </td>
-
-                  <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                    <Button variant="primary" size="sm" onClick={() => handleOpenRespond(fb)}>
-                      Reply / Resolve
-                    </Button>
+              {feedbacks.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-xs text-slate-500">
+                    No student feedback or support tickets submitted yet.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                feedbacks.map((fb) => (
+                  <tr key={fb.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
+                    <td className="py-3.5 px-4">
+                      <span className="font-bold text-slate-900 dark:text-white block">{fb.student?.full_name || 'Enrolled Student'}</span>
+                      <span className="text-[11px] text-slate-400">{fb.student?.email}</span>
+                    </td>
+
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <Badge variant="outline" className="capitalize">
+                        {fb.category.replace('_', ' ')}
+                      </Badge>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <span className="font-bold text-slate-900 dark:text-white block">{fb.subject}</span>
+                      <p className="text-[11px] text-slate-500 line-clamp-1">{fb.description}</p>
+                    </td>
+
+                    <td className="py-3.5 px-4 whitespace-nowrap text-slate-500">
+                      {formatDate(fb.created_at)}
+                    </td>
+
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <StatusBadge status={fb.status} />
+                    </td>
+
+                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                      <Button variant="primary" size="sm" onClick={() => handleOpenRespond(fb)}>
+                        Reply / Resolve
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -153,7 +161,7 @@ export const AdminFeedback: React.FC = () => {
                 value={adminResponse}
                 onChange={(e) => setAdminResponse(e.target.value)}
                 placeholder="Detail resolution steps or answers for the student..."
-                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                className="w-full rounded-2xl border-none bg-[#eef3f8] dark:bg-slate-800 p-3.5 text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
                 required
               ></textarea>
             </div>

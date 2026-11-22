@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '../../lib/utils';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'brand' | 'success' | 'warning' | 'destructive' | 'outline';
+  variant?: 'default' | 'brand' | 'success' | 'warning' | 'destructive' | 'outline' | 'yellow';
 }
 
 export const Badge: React.FC<BadgeProps> = ({
@@ -12,7 +12,8 @@ export const Badge: React.FC<BadgeProps> = ({
 }) => {
   const variants = {
     default: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700',
-    brand: 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 border-brand-200 dark:border-brand-800',
+    brand: 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-emerald-300 border-brand-200 dark:border-brand-800',
+    yellow: 'bg-brand-yellow-tint text-amber-900 border-brand-yellow/40 dark:bg-amber-950/40 dark:text-amber-300 font-bold',
     success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
     warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800',
     destructive: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800',

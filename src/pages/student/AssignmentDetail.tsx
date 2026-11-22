@@ -77,7 +77,7 @@ export const AssignmentDetail: React.FC = () => {
         <ArrowLeft className="w-3.5 h-3.5" /> Back to Assignments List
       </Link>
 
-      <Card className="p-6 sm:p-8 space-y-6">
+      <Card wavy className="p-6 sm:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
           <div className="space-y-1">
             <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">
@@ -164,7 +164,7 @@ export const AssignmentDetail: React.FC = () => {
               value={submissionText}
               onChange={(e) => setSubmissionText(e.target.value)}
               placeholder="Paste your GitHub repository link or solution code description..."
-              className="w-full rounded-xl border border-slate-300 p-3 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+              className="w-full rounded-2xl border-none bg-[#eef3f8] dark:bg-slate-800 p-3.5 text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
               required
             ></textarea>
           </div>

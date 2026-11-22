@@ -59,7 +59,7 @@ export const FeedbackPage: React.FC = () => {
       </div>
 
       {/* Ticket Submission Form */}
-      <Card className="p-6 sm:p-8 space-y-5">
+      <Card wavy className="p-6 sm:p-8 space-y-5">
         <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <MessageSquareWarning className="w-4 h-4 text-brand-600" />
           <span>Open a New Ticket / Suggestion</span>
@@ -104,7 +104,7 @@ export const FeedbackPage: React.FC = () => {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe the issue or suggested enhancement clearly..."
-              className="w-full rounded-xl border border-slate-300 p-3 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+              className="w-full rounded-2xl border-none bg-[#eef3f8] dark:bg-slate-800 p-3.5 text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
               required
             ></textarea>
           </div>

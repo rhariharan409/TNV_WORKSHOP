@@ -40,7 +40,7 @@ INSERT INTO public.workshops (
     'This intensive 6-week hands-on workshop takes students through the complete modern full-stack development cycle. You will learn frontend mastery with React, Vite, and Tailwind, secure relational database modeling with PostgreSQL and Supabase, robust Role-Based Access Control, edge computing, AI orchestration, and production deployment on Vercel.',
     'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&auto=format&fit=crop&q=80',
     '6 Weeks (36 Hours)',
-    'Dr. T. N. Venkatesh',
+    'Thamilaran',
     'Chief Architect & Senior Software Engineer',
     'Over 18 years of experience leading engineering teams at top-tier software organizations. Specialized in scalable distributed systems and cloud-native architectures.',
     120,
@@ -109,7 +109,7 @@ INSERT INTO public.courses (
     'Full-Stack Architecture & Cloud Database Engineering',
     'fullstack-architecture-cloud-database',
     'Core architecture, database normalization, Row Level Security, and high-performance React frontends.',
-    'Dr. T. N. Venkatesh',
+    'Thamilaran',
     '36 Hours',
     1,
     TRUE
@@ -524,7 +524,7 @@ INSERT INTO public.live_sessions (
     '19:30:00',
     'https://meet.google.com/tnv-work-live',
     'Google Meet',
-    'Dr. T. N. Venkatesh',
+    'Thamilaran',
     TRUE
 ),
 (
@@ -538,7 +538,7 @@ INSERT INTO public.live_sessions (
     '20:30:00',
     'https://meet.google.com/tnv-work-live',
     'Google Meet',
-    'Dr. T. N. Venkatesh',
+    'Thamilaran',
     TRUE
 )
 ON CONFLICT (id) DO NOTHING;
@@ -561,7 +561,7 @@ INSERT INTO public.certificate_templates (
     '60000000-0000-0000-0000-000000000001',
     'a0000000-0000-0000-0000-000000000001',
     'TNV Workshop Professional Certification Template',
-    'Dr. T. N. Venkatesh',
+    'Thamilaran',
     'Program Director & Chief Architect, TNV Workshop',
     'Certificate of Industry Excellence',
     75.00,

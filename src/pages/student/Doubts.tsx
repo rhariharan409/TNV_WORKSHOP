@@ -21,7 +21,7 @@ export const Doubts: React.FC = () => {
           Workshop Doubts & Community
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          Connect directly with your batchmates, teaching assistants, and Dr. T. N. Venkatesh on WhatsApp for quick doubt resolution.
+          Connect directly with your batchmates, teaching assistants, and Thamilaran on WhatsApp for quick doubt resolution.
         </p>
       </div>
 

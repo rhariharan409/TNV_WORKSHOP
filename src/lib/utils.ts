@@ -53,3 +53,36 @@ export function generateUUID(): string {
     return v.toString(16);
   });
 }
+
+export function parseGoogleDriveLink(url: string): {
+  type: 'file' | 'folder' | 'unknown';
+  id: string | null;
+  embedUrl: string | null;
+  isValid: boolean;
+} {
+  if (!url || typeof url !== 'string') {
+    return { type: 'unknown', id: null, embedUrl: null, isValid: false };
+  }
+  const trimmed = url.trim();
+  const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch) {
+    return {
+      type: 'folder',
+      id: folderMatch[1],
+      embedUrl: `https://drive.google.com/embeddedfolderview?id=${folderMatch[1]}#grid`,
+      isValid: true,
+    };
+  }
+  const fileMatch =
+    trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+    trimmed.match(/id=([a-zA-Z0-9_-]+)/);
+  if (fileMatch) {
+    return {
+      type: 'file',
+      id: fileMatch[1],
+      embedUrl: `https://drive.google.com/file/d/${fileMatch[1]}/preview`,
+      isValid: true,
+    };
+  }
+  return { type: 'unknown', id: null, embedUrl: null, isValid: false };
+}

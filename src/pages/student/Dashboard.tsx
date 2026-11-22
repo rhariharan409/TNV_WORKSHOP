@@ -3,19 +3,19 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dataProvider } from '../../lib/dataProvider';
 import {
-  WorkshopEnrollment,
   Course,
+  CourseEnrollment,
   LiveSession,
   Examination,
-  ProjectSubmission,
   Notification,
   AdminSettings,
+  SessionProgress,
 } from '../../types/database';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import { downloadCertificate } from '../../lib/certificateGenerator';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import { Card } from '../../components/ui/Card';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Modal } from '../../components/ui/Modal';
@@ -31,92 +31,84 @@ import {
   Clock,
   AlertCircle,
   CheckCircle2,
-  HelpCircle,
-  UploadCloud,
+  Compass,
   MessageCircle,
+  Lock,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
   const { user } = useAuth();
-  const [enrollments, setEnrollments] = useState<WorkshopEnrollment[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courseEnrollments, setCourseEnrollments] = useState<CourseEnrollment[]>([]);
+  const [publishedCourses, setPublishedCourses] = useState<Course[]>([]);
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
   const [exams, setExams] = useState<Examination[]>([]);
-  const [projectSubs, setProjectSubs] = useState<ProjectSubmission[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
+  const [metrics, setMetrics] = useState<{
+    totalEnrolledCourses: number;
+    inProgressCourses: number;
+    completedCourses: number;
+    overallProgress: number;
+    completedSessions: number;
+    pendingAssignments: number;
+    upcomingExams: number;
+    certificatesEarned: number;
+    unreadNotifications: number;
+  }>({
+    totalEnrolledCourses: 0,
+    inProgressCourses: 0,
+    completedCourses: 0,
+    overallProgress: 0,
+    completedSessions: 0,
+    pendingAssignments: 0,
+    upcomingExams: 0,
+    certificatesEarned: 0,
+    unreadNotifications: 0,
+  });
   const [certEligibility, setCertEligibility] = useState<any>(null);
-
-  // Payment Verification Modal State
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedEnrollment, setSelectedEnrollment] = useState<WorkshopEnrollment | null>(null);
-  const [transactionRef, setTransactionRef] = useState('');
-  const [paymentProofUrl, setPaymentProofUrl] = useState('');
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const loadData = async () => {
     if (!user?.id) return;
-    const [enrList, courseList, sessionList, examList, projList, notifList, appSettings] =
-      await Promise.all([
-        dataProvider.getStudentEnrollments(user.id),
-        dataProvider.getCourses(),
+    try {
+      setIsLoading(true);
+      const [
+        courseEnrs,
+        pubCourses,
+        sessionList,
+        examList,
+        notifList,
+        appSettings,
+        dashMetrics,
+      ] = await Promise.all([
+        dataProvider.getStudentCourseEnrollments(user.id),
+        dataProvider.getCourses({ publishedOnly: true }),
         dataProvider.getLiveSessions(),
         dataProvider.getExaminations(),
-        dataProvider.getProjectSubmissions(user.id),
         dataProvider.getNotifications(user.id),
         dataProvider.getAdminSettings(),
+        dataProvider.getStudentDashboardMetrics(user.id),
       ]);
 
-    setEnrollments(enrList);
-    setCourses(courseList);
-    setLiveSessions(sessionList);
-    setExams(examList);
-    setProjectSubs(projList);
-    setNotifications(notifList);
-    setSettings(appSettings);
-
-    if (enrList.length > 0) {
-      const elig = await dataProvider.checkEligibility(user.id, enrList[0].workshop_id);
-      setCertEligibility(elig);
+      setCourseEnrollments(courseEnrs);
+      setPublishedCourses(pubCourses);
+      setLiveSessions(sessionList);
+      setExams(examList);
+      setNotifications(notifList);
+      setSettings(appSettings);
+      setMetrics(dashMetrics);
+    } catch (err) {
+      console.error('Failed to load student dashboard data:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
   }, [user?.id]);
-
-  const primaryEnrollment = enrollments[0];
-  const isApproved = primaryEnrollment?.status === 'approved';
-
-  const handleOpenPaymentModal = (enr: WorkshopEnrollment) => {
-    setSelectedEnrollment(enr);
-    setTransactionRef('');
-    setPaymentProofUrl('');
-    setPaymentSuccess(false);
-    setPaymentModalOpen(true);
-  };
-
-  const handlePaymentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEnrollment || !transactionRef.trim() || !user) return;
-    setIsSubmittingPayment(true);
-
-    await dataProvider.submitPayment(
-      selectedEnrollment.id,
-      user.id,
-      selectedEnrollment.workshop?.price || 4999,
-      transactionRef,
-      paymentProofUrl
-    );
-
-    setIsSubmittingPayment(false);
-    setPaymentSuccess(true);
-    await loadData();
-    setTimeout(() => {
-      setPaymentModalOpen(false);
-    }, 1500);
-  };
 
   const handleDownloadCert = () => {
     if (!certEligibility?.existing_certificate || !user) return;
@@ -125,7 +117,7 @@ export const StudentDashboard: React.FC = () => {
       studentName: user.full_name,
       collegeName: user.college_name || 'Engineering College',
       department: user.department || 'Information Technology',
-      workshopTitle: primaryEnrollment?.workshop?.title || 'Advanced Technical Workshop',
+      workshopTitle: 'TNV Engineering Academy Program',
       certificateNumber: cert.certificate_number,
       completionDate: cert.completion_date,
       issueDate: cert.issue_date,
@@ -146,12 +138,17 @@ export const StudentDashboard: React.FC = () => {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            {user?.college_name || 'Institution of Technology'} • {user?.department || 'Computer Science'} • {user?.year_of_study || '3rd Year'}
+            {user?.college_name || 'Engineering Institution'} • {user?.department || 'Engineering'} • {user?.year_of_study || 'Student'}
           </p>
         </div>
 
-        {/* Quick Doubts Community Link */}
+        {/* Quick Links */}
         <div className="flex items-center gap-3">
+          <Link to="/student/available-courses">
+            <Button variant="outline" size="sm" leftIcon={<Compass className="w-4 h-4 text-brand-600" />}>
+              Explore Courses
+            </Button>
+          </Link>
           <a
             href={settings?.whatsapp_group_url || 'https://chat.whatsapp.com'}
             target="_blank"
@@ -159,189 +156,180 @@ export const StudentDashboard: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition-all"
           >
             <MessageCircle className="w-4 h-4" />
-            <span>Join Workshop WhatsApp</span>
+            <span>Join WhatsApp</span>
           </a>
         </div>
       </div>
 
-      {/* 2. PAYMENT / ENROLLMENT STATUS BANNER (Critical Rule 4) */}
-      {primaryEnrollment && !isApproved && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 dark:border-amber-900/60 dark:bg-amber-950/30 p-5 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3.5">
-              <div className="p-2 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 shrink-0 mt-0.5">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-sm text-amber-950 dark:text-amber-200">
-                    Workshop Access Locked: Payment Verification Required
-                  </h3>
-                  <StatusBadge status={primaryEnrollment.status} />
-                </div>
-                <p className="text-xs text-amber-800/90 dark:text-amber-300/80 max-w-2xl leading-relaxed">
-                  Your seat for <strong>{primaryEnrollment.workshop?.title}</strong> is reserved. Protected learning modules, Google Drive video lectures, and examinations unlock once manual admin verification is complete.
-                </p>
-              </div>
-            </div>
-
-            {primaryEnrollment.status === 'payment_pending' && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => handleOpenPaymentModal(primaryEnrollment)}
-                className="shrink-0"
-              >
-                Submit Payment Proof
-              </Button>
-            )}
-
-            {primaryEnrollment.status === 'payment_verification_pending' && (
-              <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-900/40 px-3 py-1.5 rounded-lg shrink-0">
-                Admin Review In Progress
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3. CORE METRICS & PROGRESS CARDS */}
+      {/* 2. DYNAMIC METRICS & PROGRESS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <Card className="p-5 space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Overall Progress</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Enrolled Courses</span>
             <BookOpen className="w-4 h-4 text-brand-600" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {certEligibility?.progress_percentage || 75}%
+            {metrics.totalEnrolledCourses}
           </div>
-          <ProgressBar value={certEligibility?.progress_percentage || 75} size="sm" />
-          <p className="text-[11px] text-slate-400">Target for certificate: 75%+</p>
-        </Card>
-
-        <Card className="p-5 space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Assignments</span>
-            <FileCheck2 className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {certEligibility?.assignments_satisfied ? 'Completed' : '1 Pending'}
-          </div>
-          <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> High score maintained
+          <p className="text-xs text-slate-500">
+            {metrics.inProgressCourses} in progress • {metrics.completedCourses} completed
           </p>
         </Card>
 
         <Card className="p-5 space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Capstone Project</span>
-            <FolderGit2 className="w-4 h-4 text-purple-600" />
+            <span className="text-xs font-semibold uppercase tracking-wider">Overall Progress</span>
+            <Sparkles className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {projectSubs.length > 0 ? projectSubs[0].status.replace('_', ' ') : 'Not Submitted'}
+            {metrics.overallProgress}%
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {projectSubs.length > 0 && projectSubs[0].marks_obtained
-              ? `Score: ${projectSubs[0].marks_obtained}/100`
-              : 'Deploy to GitHub & Vercel'}
+          <ProgressBar value={metrics.overallProgress} size="sm" />
+          <p className="text-[11px] text-slate-400">{metrics.completedSessions} sessions completed</p>
+        </Card>
+
+        <Card className="p-5 space-y-2">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wider">Pending Tasks</span>
+            <FileCheck2 className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+            {metrics.pendingAssignments}
+          </div>
+          <p className="text-xs text-slate-500">
+            {metrics.upcomingExams} upcoming exam{metrics.upcomingExams === 1 ? '' : 's'}
           </p>
         </Card>
 
         <Card className="p-5 space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Certification</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Certificates</span>
             <Award className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {certEligibility?.already_issued ? 'Issued' : certEligibility?.is_eligible ? 'Eligible' : 'In Progress'}
+            {metrics.certificatesEarned}
           </div>
-          {certEligibility?.already_issued ? (
-            <button
-              onClick={handleDownloadCert}
-              className="text-xs font-bold text-brand-600 hover:underline flex items-center gap-1"
-            >
-              Download PDF ({certEligibility.existing_certificate?.certificate_number})
-            </button>
-          ) : (
-            <p className="text-[11px] text-slate-400">Complete assignments & project to unlock</p>
-          )}
+          <p className="text-xs text-slate-500">
+            {metrics.certificatesEarned > 0 ? (
+              <Link to="/student/certificates" className="text-brand-600 font-bold hover:underline">
+                View Credentials →
+              </Link>
+            ) : (
+              'Complete courses to earn'
+            )}
+          </p>
         </Card>
       </div>
 
-      {/* 4. ACTIVE ENROLLED WORKSHOP OVERVIEW */}
+      {/* 4. ACTIVE ENROLLED COURSES SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Active Workshop Learning Path</h2>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Active Courses</h2>
             <Link to="/student/my-courses" className="text-xs font-semibold text-brand-600 hover:underline">
-              View All Courses
+              View All Enrolled Courses ({courseEnrollments.length})
             </Link>
           </div>
 
-          {primaryEnrollment ? (
-            <Card className="p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <Badge variant="brand" className="mb-2">Enrolled Workshop</Badge>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                    {primaryEnrollment.workshop?.title}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Instructor: {primaryEnrollment.workshop?.instructor_name} • Duration: {primaryEnrollment.workshop?.duration}
-                  </p>
-                </div>
-                <StatusBadge status={primaryEnrollment.status} />
-              </div>
+          {courseEnrollments.length > 0 ? (
+            <div className="space-y-4">
+              {courseEnrollments.slice(0, 3).map((enr) => {
+                const c = (Array.isArray(enr.course) ? enr.course[0] : enr.course) || {};
+                const courseId = c?.id || enr.course_id;
+                const courseTitle = c?.title || (enr as any).course_title || 'Enrolled Course';
+                const progress = enr.progress_percentage || 0;
+                return (
+                  <Card key={enr.id} className="p-5 space-y-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300 uppercase">
+                            {c?.category || 'Development'}
+                          </span>
+                          <span className="text-[10px] font-semibold text-slate-400 capitalize">
+                            {c?.level || 'All Levels'}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                          {courseTitle}
+                        </h3>
+                      </div>
+                      <Link to={`/student/courses/${courseId}`}>
+                        <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                          Continue Course
+                        </Button>
+                      </Link>
+                    </div>
 
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-3">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">Curriculum Progress</span>
-                  <span className="font-bold text-brand-600 dark:text-brand-400">3 of 4 Modules Completed</span>
-                </div>
-                <ProgressBar value={75} size="md" />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                {isApproved ? (
-                  <Link to="/student/my-courses">
-                    <Button variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
-                      Continue Learning
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-slate-600 dark:text-slate-400">Course Progress</span>
+                        <span className="font-bold text-brand-600 dark:text-brand-400">
+                          {progress}% • {enr.completed_sessions || 0}/{enr.total_sessions || 0} Sessions
+                        </span>
+                      </div>
+                      <ProgressBar value={progress} size="sm" />
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Card className="p-6 space-y-4 border-slate-200 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                      <Compass className="w-5 h-5 text-brand-green" />
+                      Published Technical Courses ({publishedCourses.length})
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      You are not enrolled in any courses yet. Explore our published courses and begin your learning path:
+                    </p>
+                  </div>
+                  <Link to="/student/available-courses">
+                    <Button variant="outline" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                      View Full Directory
                     </Button>
                   </Link>
+                </div>
+
+                {publishedCourses.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {publishedCourses.map((c) => (
+                      <div
+                        key={c.id}
+                        className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-green/60 bg-slate-50/50 dark:bg-slate-800/40 transition-all flex flex-col justify-between gap-3"
+                      >
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-green-tint text-brand-green dark:bg-brand-950/50 dark:text-brand-300 uppercase">
+                            Published Track
+                          </span>
+                          <h4 className="font-bold text-sm text-slate-900 dark:text-white line-clamp-1">{c.title}</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                            {c.description || 'Hands-on practical course curriculum.'}
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-xs">
+                          <span className="text-[11px] text-slate-400 font-medium">{c.duration || 'Flexible'}</span>
+                          <Link to="/student/available-courses">
+                            <Button variant="primary" size="sm" className="text-xs font-bold">
+                              Enroll Now
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={() => handleOpenPaymentModal(primaryEnrollment)}
-                  >
-                    Submit Verification Details
-                  </Button>
+                  <p className="text-xs text-slate-400 py-4 text-center">No published courses available at this moment.</p>
                 )}
-
-                <Link to="/student/assignments">
-                  <Button variant="outline" size="md">
-                    Assignments
-                  </Button>
-                </Link>
-
-                <Link to="/student/projects">
-                  <Button variant="outline" size="md">
-                    Capstone Project
-                  </Button>
-                </Link>
-              </div>
-            </Card>
-          ) : (
-            <Card className="p-8 text-center space-y-3">
-              <p className="text-sm text-slate-500">You are not enrolled in any workshop yet.</p>
-              <Link to="/workshops">
-                <Button variant="primary" size="sm">Explore Catalog</Button>
-              </Link>
-            </Card>
+              </Card>
+            </div>
           )}
 
           {/* Upcoming Live Sessions */}
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4 pt-2">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Video className="w-5 h-5 text-brand-600" />
@@ -353,28 +341,80 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {liveSessions.slice(0, 2).map((ls) => (
-                <div
-                  key={ls.id}
-                  className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm"
-                >
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-sm text-slate-900 dark:text-white">{ls.title}</h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Date: {formatDate(ls.scheduled_date)} • Time: {ls.start_time} - {ls.end_time} • Platform: {ls.platform}
-                    </p>
-                  </div>
-                  {isApproved ? (
-                    <a href={ls.meeting_link} target="_blank" rel="noreferrer">
-                      <Button variant="primary" size="sm" rightIcon={<Video className="w-3.5 h-3.5" />}>
-                        Join Meeting
-                      </Button>
-                    </a>
-                  ) : (
-                    <span className="text-xs text-amber-600 font-medium">Unlocks upon approval</span>
-                  )}
-                </div>
-              ))}
+              {liveSessions.length === 0 ? (
+                <Card className="p-5 text-center text-xs text-slate-400">
+                  No upcoming live masterclasses scheduled.
+                </Card>
+              ) : (
+                liveSessions.slice(0, 2).map((ls) => {
+                  let isLive = false;
+                  let isEnded = false;
+                  try {
+                    const now = new Date();
+                    const [y, m, d] = ls.scheduled_date.split('-').map(Number);
+                    const [sh, sm] = ls.start_time.split(':').map(Number);
+                    const [eh, em] = ls.end_time.split(':').map(Number);
+                    const start = new Date(y, m - 1, d, sh, sm, 0);
+                    const end = new Date(y, m - 1, d, eh, em, 0);
+                    const accessOpen = new Date(start.getTime() - 10 * 60 * 1000);
+                    if (now >= accessOpen && now <= end) isLive = true;
+                    if (now > end) isEnded = true;
+                  } catch {}
+
+                  return (
+                    <div
+                      key={ls.id}
+                      className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm transition-all ${
+                        isLive
+                          ? 'border-brand-500 bg-brand-50/20 dark:bg-brand-950/20'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          {isLive ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-600 animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
+                              LIVE NOW
+                            </span>
+                          ) : isEnded ? (
+                            <span className="text-[10px] font-bold text-slate-400">Ended</span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-brand-600">Upcoming</span>
+                          )}
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            {ls.course?.title || 'Course Masterclass'}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">{ls.title}</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Date: {formatDate(ls.scheduled_date)} • Time: {ls.start_time} - {ls.end_time} • Platform: {ls.platform}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0">
+                        {isLive ? (
+                          <a href={ls.meeting_link} target="_blank" rel="noreferrer">
+                            <Button variant="primary" size="sm" rightIcon={<ExternalLink className="w-3.5 h-3.5" />}>
+                              Join Live Class
+                            </Button>
+                          </a>
+                        ) : isEnded ? (
+                          <Button variant="outline" size="sm" disabled className="opacity-60 cursor-not-allowed text-xs">
+                            Session Ended
+                          </Button>
+                        ) : (
+                          <Link to="/student/live-sessions">
+                            <Button variant="outline" size="sm" leftIcon={<Lock className="w-3 h-3" />} className="text-xs">
+                              Opens at {ls.start_time}
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -395,15 +435,11 @@ export const StudentDashboard: React.FC = () => {
                   <span>Duration: {exams[0].duration_minutes} Mins</span>
                   <span>Passing: {exams[0].passing_marks} / {exams[0].total_marks}</span>
                 </div>
-                {isApproved ? (
-                  <Link to={`/student/examinations/${exams[0].id}`} className="block pt-1">
-                    <Button variant="primary" size="sm" className="w-full font-bold">
-                      Start Proctored Exam
-                    </Button>
-                  </Link>
-                ) : (
-                  <p className="text-amber-600 text-[11px] font-semibold">Locked until payment verified</p>
-                )}
+                <Link to={`/student/examinations/${exams[0].id}`} className="block pt-1">
+                  <Button variant="primary" size="sm" className="w-full font-bold">
+                    Start Proctored Exam
+                  </Button>
+                </Link>
               </div>
             ) : (
               <p className="text-xs text-slate-500">No scheduled exams at this time.</p>
@@ -414,92 +450,28 @@ export const StudentDashboard: React.FC = () => {
           <Card className="p-5 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                Recent Notifications
+                Recent Announcements
               </h3>
               <Link to="/student/notifications" className="text-[11px] font-semibold text-brand-600 hover:underline">
-                All
+                View All
               </Link>
             </div>
 
             <div className="space-y-3">
-              {notifications.slice(0, 4).map((n) => (
-                <div key={n.id} className="text-xs space-y-1">
-                  <p className="font-bold text-slate-900 dark:text-white">{n.title}</p>
-                  <p className="text-slate-500 text-[11px] leading-relaxed">{n.message}</p>
-                </div>
-              ))}
+              {notifications.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 text-center">No announcements yet.</p>
+              ) : (
+                notifications.slice(0, 4).map((n) => (
+                  <div key={n.id} className="text-xs space-y-1">
+                    <p className="font-bold text-slate-900 dark:text-white">{n.title}</p>
+                    <p className="text-slate-500 text-[11px] leading-relaxed">{n.message}</p>
+                  </div>
+                ))
+              )}
             </div>
           </Card>
         </div>
       </div>
-
-      {/* 6. PAYMENT VERIFICATION MODAL */}
-      <Modal
-        isOpen={paymentModalOpen}
-        onClose={() => setPaymentModalOpen(false)}
-        title="Submit Payment Verification"
-        description="Submit your transaction reference for administrator verification"
-        maxWidth="md"
-      >
-        {paymentSuccess ? (
-          <div className="text-center py-6 space-y-2">
-            <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-            <h4 className="font-bold text-base text-slate-900 dark:text-white">Proof Submitted Successfully</h4>
-            <p className="text-xs text-slate-500">
-              Your transaction has been submitted to the admin team. Once approved, your workshop resources will unlock automatically.
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={handlePaymentSubmit} className="space-y-4">
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Workshop:</span>
-                <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
-                  {selectedEnrollment?.workshop?.title}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Payable Amount:</span>
-                <span className="font-bold text-brand-600 dark:text-brand-400">
-                  {formatCurrency(selectedEnrollment?.workshop?.price || 4999)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Official UPI ID:</span>
-                <span className="font-mono font-bold text-slate-900 dark:text-white">
-                  {settings?.payment_upi_id || 'tnvworkshop@okhdfcbank'}
-                </span>
-              </div>
-            </div>
-
-            <Input
-              label="UPI Transaction ID / UTR / Reference No. *"
-              placeholder="e.g. 408819283749"
-              value={transactionRef}
-              onChange={(e) => setTransactionRef(e.target.value)}
-              helperText="12-digit UPI reference number from your GPay, PhonePe, or Banking app"
-              required
-            />
-
-            <Input
-              label="Payment Screenshot URL (Optional)"
-              placeholder="e.g. https://drive.google.com/file/d/..."
-              value={paymentProofUrl}
-              onChange={(e) => setPaymentProofUrl(e.target.value)}
-              helperText="Optional link to screenshot or receipt image"
-            />
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setPaymentModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" size="sm" isLoading={isSubmittingPayment}>
-                Submit for Verification
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
     </div>
   );
 };

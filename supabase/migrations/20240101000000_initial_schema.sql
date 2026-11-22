@@ -599,7 +599,7 @@ CREATE TABLE IF NOT EXISTS public.certificate_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workshop_id UUID REFERENCES public.workshops(id) ON DELETE CASCADE,
     template_name TEXT NOT NULL,
-    signatory_name TEXT NOT NULL DEFAULT 'Dr. T. N. Venkatesh',
+    signatory_name TEXT NOT NULL DEFAULT 'Thamilaran',
     signatory_title TEXT NOT NULL DEFAULT 'Program Director & Chief Architect',
     signature_image_url TEXT,
     badge_title TEXT NOT NULL DEFAULT 'Certificate of Completion',

@@ -81,10 +81,13 @@ export interface Workshop {
   available_seats: number;
   price: number;
   is_active: boolean;
+  status?: 'draft' | 'published' | 'completed';
+  created_by?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   created_at: string;
   updated_at?: string;
+  enrolled_count?: number;
 }
 
 export interface WorkshopEnrollment {
@@ -122,18 +125,28 @@ export interface Payment {
 
 export interface Course {
   id: string;
-  workshop_id: string;
+  workshop_id?: string | null;
   title: string;
   slug: string;
   description?: string | null;
   instructor_name?: string | null;
   duration?: string | null;
+  category?: string | null;
+  level?: string | null;
+  thumbnail_url?: string | null;
+  status?: 'draft' | 'published' | 'archived';
   order_index: number;
   is_published: boolean;
+  created_by?: string | null;
+  published_at?: string | null;
+  published_by?: string | null;
   created_at: string;
   updated_at?: string;
   workshop?: Workshop;
   modules?: Module[];
+  enrolled_count?: number;
+  modules_count?: number;
+  sessions_count?: number;
 }
 
 export interface CourseEnrollment {
@@ -142,8 +155,15 @@ export interface CourseEnrollment {
   student_id: string;
   progress_percentage: number;
   is_completed: boolean;
+  status?: 'active' | 'completed' | 'pending_approval' | 'rejected';
   enrolled_at: string;
   completed_at?: string | null;
+  completed_sessions?: number;
+  total_sessions?: number;
+  created_at?: string;
+  updated_at?: string;
+  course?: Course;
+  student?: Profile;
 }
 
 export interface Module {
@@ -162,13 +182,20 @@ export interface Session {
   module_id: string;
   title: string;
   description?: string | null;
-  session_type: 'lecture' | 'reading' | 'assignment' | 'quiz';
+  session_type: 'lecture' | 'reading' | 'assignment' | 'quiz' | 'document' | 'video' | 'link' | 'lesson';
   order_index: number;
   duration_minutes: number;
   is_published: boolean;
+  drive_folder_url?: string | null;
+  drive_folder_id?: string | null;
+  drive_url?: string | null;
   created_at: string;
   video_lecture?: VideoLecture | null;
+  video_lectures?: VideoLecture[];
   learning_materials?: LearningMaterial[];
+  quiz?: Quiz | null;
+  content_data?: any;
+  video_links?: Array<{ id: string; title: string; url: string; duration_minutes?: number }>;
   is_completed?: boolean;
 }
 
@@ -195,6 +222,8 @@ export interface LearningMaterial {
   file_type?: string | null;
   file_size_bytes?: number | null;
   external_link?: string | null;
+  drive_url?: string | null;
+  drive_file_id?: string | null;
   is_downloadable: boolean;
   created_at: string;
 }
@@ -404,16 +433,19 @@ export interface Certificate {
   id: string;
   certificate_number: string;
   student_id: string;
-  workshop_id: string;
+  workshop_id?: string | null;
   course_id?: string | null;
   issue_date: string;
   completion_date: string;
   pdf_url?: string | null;
   status: 'issued' | 'revoked';
   revoked_reason?: string | null;
+  issued_by?: string | null;
   created_at: string;
   student?: Profile;
   workshop?: Workshop;
+  course?: Course;
+  issuer?: Profile;
 }
 
 export interface Feedback {

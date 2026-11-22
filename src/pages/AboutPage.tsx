@@ -35,7 +35,7 @@ export const AboutPage: React.FC = () => {
           </div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Strict Verification</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Certificates are strictly earned, not purchased. Students must satisfy module completion, graded assignments, project evaluations, and proctored exams.
+            Certificates are strictly earned, not purchased. Students must satisfy module completion, graded assignments, milestone assessments, and proctored exams.
           </p>
         </Card>
 
@@ -45,7 +45,7 @@ export const AboutPage: React.FC = () => {
           </div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Architect Mentorship</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Guided by Dr. T. N. Venkatesh and industry engineering leaders who review real student GitHub repositories and provide architectural feedback.
+            Guided by Thamilaran and industry engineering leaders who review real student GitHub repositories and provide architectural feedback.
           </p>
         </Card>
       </div>
@@ -56,18 +56,18 @@ export const AboutPage: React.FC = () => {
           <div className="h-32 w-32 rounded-3xl overflow-hidden shadow-lg border-2 border-brand-500">
             <img
               src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400"
-              alt="Dr. T. N. Venkatesh"
+              alt="Thamilaran"
               className="h-full w-full object-cover"
             />
           </div>
           <div>
-            <h4 className="font-bold text-base text-slate-900 dark:text-white">Dr. T. N. Venkatesh</h4>
+            <h4 className="font-bold text-base text-slate-900 dark:text-white">Thamilaran</h4>
             <p className="text-xs text-brand-600 dark:text-brand-400 font-semibold">Chief Architect & Program Director</p>
           </div>
         </div>
         <div className="md:col-span-8 space-y-4 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           <p>
-            With over 18 years in high-throughput distributed systems and enterprise software architecture, Dr. Venkatesh leads the technical curriculum at TNV Workshop. His mission is to bring genuine engineering discipline to university talent through verifiable project execution.
+            With over 18 years in high-throughput distributed systems and enterprise software architecture, Thamilaran leads the technical curriculum at TNV Workshop. His mission is to bring genuine engineering discipline to university talent through verifiable project execution.
           </p>
           <p>
             The TNV Workshop platform is specifically architected as an extensible learning ecosystem, designed for seamless future integration into the broader <strong>TNV Hub</strong> developer ecosystem.

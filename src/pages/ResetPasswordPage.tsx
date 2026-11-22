@@ -38,7 +38,7 @@ export const ResetPasswordPage: React.FC = () => {
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">
-      <Card className="shadow-xl">
+      <Card wavy className="shadow-2xl">
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 mb-2">
             <KeyRound className="h-6 w-6" />

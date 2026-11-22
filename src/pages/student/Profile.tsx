@@ -34,7 +34,7 @@ export const ProfilePage: React.FC = () => {
         </p>
       </div>
 
-      <Card className="p-6 sm:p-8 space-y-6">
+      <Card wavy className="p-6 sm:p-8 space-y-6">
         <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600 text-white font-black text-2xl shadow-md">
             {user?.full_name?.charAt(0) || 'S'}

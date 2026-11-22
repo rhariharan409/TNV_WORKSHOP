@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { dataProvider } from '../lib/dataProvider';
-import { Workshop } from '../types/database';
+import { Course } from '../types/database';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -14,14 +14,14 @@ export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { signup, isAuthenticated } = useAuth();
 
-  const [workshops, setWorkshops] = useState<Workshop[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [collegeName, setCollegeName] = useState('');
   const [department, setDepartment] = useState('');
   const [yearOfStudy, setYearOfStudy] = useState('3rd Year');
-  const [selectedWorkshop, setSelectedWorkshop] = useState(searchParams.get('workshop') || '');
+  const [selectedCourse, setSelectedCourse] = useState(searchParams.get('course') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -29,13 +29,13 @@ export const RegisterPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    dataProvider.getWorkshops().then((list) => {
-      setWorkshops(list);
-      if (!selectedWorkshop && list.length > 0) {
-        setSelectedWorkshop(list[0].id);
+    dataProvider.getCourses({ publishedOnly: true }).then((list) => {
+      setCourses(list);
+      if (!selectedCourse && list.length > 0) {
+        setSelectedCourse(list[0].id);
       }
     });
-  }, [selectedWorkshop]);
+  }, [selectedCourse]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +49,7 @@ export const RegisterPage: React.FC = () => {
     if (!department.trim()) return setError('Please enter your engineering department.');
     if (password.length < 6) return setError('Password must be at least 6 characters.');
     if (password !== confirmPassword) return setError('Passwords do not match.');
-    if (!selectedWorkshop) return setError('Please select a workshop to enroll.');
+    if (!selectedCourse) return setError('Please select a course to begin.');
 
     setIsLoading(true);
     const result = await signup({
@@ -60,28 +60,36 @@ export const RegisterPage: React.FC = () => {
       collegeName,
       department,
       yearOfStudy,
-      workshopId: selectedWorkshop,
     });
 
-    setIsLoading(false);
     if (!result.success) {
+      setIsLoading(false);
       setError(result.error || 'Registration failed. Please try again.');
     } else {
-      // Redirect to student dashboard where they can submit payment verification proof
+      // Auto-enroll in selected course
+      if (selectedCourse) {
+        try {
+          const authUser = JSON.parse(localStorage.getItem('tnv_auth_session') || '{}');
+          if (authUser?.id) {
+            await dataProvider.enrollInCourse(selectedCourse, authUser.id);
+          }
+        } catch (enrollErr) {
+          console.warn('Post-registration course enrollment skipped:', enrollErr);
+        }
+      }
+      setIsLoading(false);
       navigate('/student/dashboard');
     }
   };
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
-      <Card className="shadow-xl border-slate-200 dark:border-slate-800">
+      <Card wavy className="shadow-2xl border-slate-200 dark:border-slate-800">
         <CardHeader className="text-center space-y-2">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-md mb-2">
-            <GraduationCap className="h-7 w-7" />
-          </div>
+          <img src="/tnv-logo.png" alt="Tamil Nadu Volunteers" className="w-14 h-14 mx-auto rounded-full object-contain mb-2 shadow-xs" />
           <CardTitle className="text-2xl font-extrabold tracking-tight">Student Enrollment Registration</CardTitle>
           <CardDescription className="text-xs text-slate-500">
-            Create your TNV Workshop student account and reserve your cohort seat.
+            Tamil Nadu Volunteers (தமிழ்நாடு தன்னார்வலர்கள்) • TNV Workshop Academy
           </CardDescription>
         </CardHeader>
 
@@ -154,12 +162,12 @@ export const RegisterPage: React.FC = () => {
             </div>
 
             <Select
-              label="Select Workshop *"
-              value={selectedWorkshop}
-              onChange={(e) => setSelectedWorkshop(e.target.value)}
-              options={workshops.map((w) => ({
-                value: w.id,
-                label: `${w.title} (${w.duration})`,
+              label="Select Course to Begin Learning *"
+              value={selectedCourse}
+              onChange={(e) => setSelectedCourse(e.target.value)}
+              options={courses.map((c) => ({
+                value: c.id,
+                label: `${c.title} (${c.category || 'Technical Track'})`,
               }))}
             />
 

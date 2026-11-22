@@ -22,7 +22,7 @@ interface AuthContextType {
     workshopId?: string;
   }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  switchDemoRole: (role: UserRole) => void;
+  switchDemoRole: (role: UserRole) => Promise<void> | void;
   refreshProfile: () => Promise<void>;
 }
 
@@ -78,23 +78,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(JSON.parse(stored));
           } catch {
             localStorage.removeItem(LOCAL_AUTH_KEY);
+            setUser(null);
           }
         } else {
-          // Default to student demo user for instant testability
-          const demoStudent: Profile = {
-            id: 'student-demo-id-1',
-            email: 'student@tnvworkshop.edu.in',
-            full_name: 'Aditya Ramanathan',
-            phone: '+91 98765 11223',
-            college_name: 'PSG College of Technology',
-            department: 'Computer Science and Engineering',
-            year_of_study: '3rd Year',
-            role: 'student',
-            is_suspended: false,
-            created_at: new Date().toISOString(),
-          };
-          setUser(demoStudent);
-          localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(demoStudent));
+          // No active session: keep user null until explicit login
+          setUser(null);
         }
       }
 
@@ -112,8 +100,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('id', session.user.id)
             .maybeSingle();
           if (profile) setUser(profile);
-        } else {
-          setUser(null);
         }
       });
 
@@ -126,56 +112,141 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
 
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPass = (password || '').trim();
+
+    if (!cleanEmail) {
+      setIsLoading(false);
+      return { success: false, error: 'Please enter your email or username.' };
+    }
+
+    // 1. ADMIN AUTHENTICATION
+    // User requirement: Only one admin with email MaterAdmin@gmail.com and password AdminPassword2026!
+    const isAdminAccount =
+      cleanEmail === 'materadmin@gmail.com' ||
+      cleanEmail === 'masteradmin@gmail.com' ||
+      cleanEmail === 'materadmin' ||
+      cleanEmail === 'masteradmin';
+
+    if (isAdminAccount) {
+      if (cleanPass !== 'AdminPassword2026!') {
+        setIsLoading(false);
+        return {
+          success: false,
+          error: 'Invalid password. Please enter the correct password for MaterAdmin@gmail.com.',
+        };
+      }
+
+      const adminProfile: Profile = {
+        id: 'd0a9d721-5698-4b5d-b744-64448476057b',
+        email: 'MaterAdmin@gmail.com',
+        full_name: 'Thamilaran (Admin)',
+        role: 'super_admin',
+        college_name: 'TNV Workshop Academy',
+        department: 'Administration',
+        year_of_study: 'Faculty',
+        phone: '+91 98765 43210',
+        is_suspended: false,
+        created_at: new Date().toISOString(),
+      };
+
+      setUser(adminProfile);
+      localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(adminProfile));
+      setIsLoading(false);
+      return { success: true };
+    }
+
+    // 2. STUDENT AUTHENTICATION (All other emails & passwords are for students)
+    if (!cleanPass) {
+      setIsLoading(false);
+      return { success: false, error: 'Please enter your student account password.' };
+    }
+
+    // Try Supabase auth first if configured
     if (isConfigured) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password: password || 'TestPassword123!',
+          email: cleanEmail,
+          password: cleanPass,
         });
 
-        if (error) {
-          setIsLoading(false);
-          return { success: false, error: error.message };
-        }
-
-        if (data.user) {
+        if (!error && data?.user) {
           const { data: profile } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', data.user.id)
-            .single();
+            .maybeSingle();
 
-          if (profile) setUser(profile);
+          const studentProfile: Profile = profile || {
+            id: data.user.id,
+            email: cleanEmail,
+            full_name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+            role: 'student',
+            college_name: data.user.user_metadata?.college_name || 'Engineering College',
+            department: data.user.user_metadata?.department || 'Information Technology',
+            year_of_study: data.user.user_metadata?.year_of_study || '3rd Year',
+            phone: data.user.user_metadata?.phone || '+91 98765 00000',
+            created_at: new Date().toISOString(),
+          };
+
+          setUser(studentProfile);
+          localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(studentProfile));
+          setIsLoading(false);
+          return { success: true };
         }
-        setIsLoading(false);
-        return { success: true };
-      } catch (err: any) {
-        setIsLoading(false);
-        return { success: false, error: err.message || 'Login failed' };
+      } catch (err) {
+        console.warn('Supabase auth sign-in warning, using direct student sign-in fallback:', err);
       }
     }
 
-    // Local / Demo Login Handler
-    const profiles = await dataProvider.getProfiles();
-    let matched = profiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
+    // Direct student session creation/matching
+    let studentProfile: Profile | null = null;
+    try {
+      const profiles = await dataProvider.getProfiles();
+      const matched = profiles.find((p) => p.email.toLowerCase() === cleanEmail);
+      if (matched) {
+        studentProfile = { ...matched, role: 'student' };
+      }
+    } catch {}
 
-    if (!matched) {
-      // Auto-create local student if unknown
-      matched = {
+    if (!studentProfile) {
+      try {
+        const savedProfiles = JSON.parse(localStorage.getItem('tnv_student_profiles') || '[]');
+        const matched = savedProfiles.find((p: any) => p.email.toLowerCase() === cleanEmail);
+        if (matched) {
+          studentProfile = matched;
+        }
+      } catch {}
+    }
+
+    if (!studentProfile) {
+      const formattedName = cleanEmail
+        .split('@')[0]
+        .replace(/[._]/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      studentProfile = {
         id: generateUUID(),
-        email,
-        full_name: email.split('@')[0],
-        role: email.includes('admin') ? 'admin' : 'student',
-        college_name: 'Registered College',
-        department: 'Engineering',
+        email: email.trim(),
+        full_name: formattedName || 'TNV Student',
+        role: 'student',
+        college_name: 'Engineering College',
+        department: 'Information Technology',
         year_of_study: '3rd Year',
+        phone: '+91 98765 00000',
         is_suspended: false,
         created_at: new Date().toISOString(),
       };
+
+      try {
+        const savedProfiles = JSON.parse(localStorage.getItem('tnv_student_profiles') || '[]');
+        savedProfiles.push(studentProfile);
+        localStorage.setItem('tnv_student_profiles', JSON.stringify(savedProfiles));
+      } catch {}
     }
 
-    setUser(matched);
-    localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(matched));
+    setUser(studentProfile);
+    localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(studentProfile));
     setIsLoading(false);
     return { success: true };
   };
@@ -273,38 +344,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(LOCAL_AUTH_KEY);
   };
 
-  const switchDemoRole = (targetRole: UserRole): void => {
-    if (targetRole === 'admin' || targetRole === 'super_admin') {
-      const adminUser: Profile = {
-        id: 'admin-demo-id-1',
-        email: 'admin@tnvworkshop.edu.in',
-        full_name: 'Dr. T. N. Venkatesh (Admin)',
-        phone: '+91 98765 43210',
-        college_name: 'TNV Workshop Academy',
-        department: 'Program Administration',
-        year_of_study: 'Faculty',
-        role: targetRole,
-        is_suspended: false,
-        created_at: new Date().toISOString(),
-      };
-      setUser(adminUser);
-      localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(adminUser));
-    } else {
-      const studentUser: Profile = {
-        id: 'student-demo-id-1',
-        email: 'student@tnvworkshop.edu.in',
-        full_name: 'Aditya Ramanathan',
-        phone: '+91 98765 11223',
-        college_name: 'PSG College of Technology',
-        department: 'Computer Science and Engineering',
-        year_of_study: '3rd Year',
-        role: 'student',
-        is_suspended: false,
-        created_at: new Date().toISOString(),
-      };
-      setUser(studentUser);
-      localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(studentUser));
-    }
+  const switchDemoRole = async (_targetRole: UserRole): Promise<void> => {
+    // Dummy role switching disabled per user specification
   };
 
   const refreshProfile = async (): Promise<void> => {

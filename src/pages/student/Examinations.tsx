@@ -59,7 +59,7 @@ export const Examinations: React.FC = () => {
               <Card key={exam.id} className="p-6 sm:p-8 space-y-6 shadow-sm border-slate-200 dark:border-slate-800">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
                   <div className="space-y-1">
-                    <Badge variant="brand">Qualification Exam</Badge>
+                    <Badge variant="brand">{exam.course?.title ? `${exam.course.title} • Exam` : 'Qualification Exam'}</Badge>
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">{exam.title}</h2>
                     <p className="text-xs text-slate-500">{exam.description}</p>
                   </div>

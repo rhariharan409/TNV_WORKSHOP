@@ -99,7 +99,7 @@ export const Assignments: React.FC = () => {
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">
-                        Max Marks: {a.max_marks} (Passing: {a.passing_marks})
+                        {a.course?.title ? `${a.course.title} • ` : ''}Max Marks: {a.max_marks} (Passing: {a.passing_marks})
                       </span>
                       {sub ? <StatusBadge status={sub.status} /> : <Badge variant="warning">Not Started</Badge>}
                     </div>

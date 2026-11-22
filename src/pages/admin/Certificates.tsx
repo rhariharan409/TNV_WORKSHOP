@@ -1,20 +1,27 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { dataProvider } from '../../lib/dataProvider';
-import { Certificate, Profile, Workshop } from '../../types/database';
+import { Certificate, Course, CourseEnrollment, Profile, Workshop } from '../../types/database';
 import { downloadCertificate } from '../../lib/certificateGenerator';
 import { formatDate } from '../../lib/utils';
-import { Card, CardContent } from '../../components/ui/Card';
+import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
-import { Award, Download, ShieldCheck, XCircle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { Award, Download, ShieldCheck, XCircle, CheckCircle2, Search, Filter, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const AdminCertificates: React.FC = () => {
+  const { user } = useAuth();
+  const isAdminUser = user?.role === 'admin' || user?.role === 'super_admin';
+  const adminId = user?.role === 'super_admin' ? undefined : user?.id;
+
   const [certificates, setCertificates] = useState<Certificate[]>([]);
-  const [students, setStudents] = useState<Profile[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
+  const [courseEnrollments, setCourseEnrollments] = useState<CourseEnrollment[]>([]);
   const [revokeModalCert, setRevokeModalCert] = useState<Certificate | null>(null);
   const [revokeReason, setRevokeReason] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -22,50 +29,81 @@ export const AdminCertificates: React.FC = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const [cList, pList, wList] = await Promise.all([
-      dataProvider.getCertificates(),
-      dataProvider.getProfiles(),
-      dataProvider.getWorkshops(),
-    ]);
-    setCertificates(cList);
-    setStudents(pList.filter((p) => p.role === 'student'));
-    setWorkshops(wList);
-    setIsLoading(false);
+    try {
+      const [cList, courseList, wList, allCourseEnrs] = await Promise.all([
+        dataProvider.getCertificates(adminId),
+        dataProvider.getCourses({ adminId }),
+        dataProvider.getWorkshops(adminId),
+        dataProvider.getCourseEnrollments(undefined, undefined, adminId),
+      ]);
+      setCertificates(cList);
+      setCourses(courseList);
+      setWorkshops(wList);
+      setCourseEnrollments(allCourseEnrs);
+    } catch (err) {
+      console.error('Failed to load certificates data:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user?.id]);
 
-  const handleIssueCertificate = async (studentId: string, workshopId: string) => {
+  const handleIssueCourseCert = async (studentId: string, courseId: string) => {
     setIsProcessing(true);
-    await dataProvider.issueCertificate(studentId, workshopId);
-    setIsProcessing(false);
-    await loadData();
-    alert('Certificate successfully generated and issued to student!');
+    try {
+      await dataProvider.issueCourseCertificate(studentId, courseId, user?.id);
+      await loadData();
+      alert('Course Certificate successfully issued and student notified!');
+    } catch (err: any) {
+      alert(`Certificate issuance failed: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleDownloadPDF = (cert: Certificate) => {
+    const title = cert.course?.title || cert.workshop?.title || 'Technical Workshop Program';
     downloadCertificate({
       studentName: cert.student?.full_name || 'Enrolled Student',
       collegeName: cert.student?.college_name || 'PSG College of Technology',
       department: cert.student?.department || 'Information Technology',
-      workshopTitle: cert.workshop?.title || 'Full-Stack Cloud & AI Engineering',
+      workshopTitle: title,
       certificateNumber: cert.certificate_number,
       completionDate: cert.completion_date,
       issueDate: cert.issue_date,
-      signatoryName: 'Dr. T. N. Venkatesh',
+      signatoryName: 'Thamilaran',
       signatoryTitle: 'Program Director & Chief Architect',
     });
   };
 
   const handleRevoke = async () => {
     if (!revokeModalCert) return;
-    await dataProvider.revokeCertificate(revokeModalCert.id, revokeReason || 'Administrative revocation');
-    setRevokeModalCert(null);
-    setRevokeReason('');
-    await loadData();
+    try {
+      await dataProvider.revokeCertificate(revokeModalCert.id, revokeReason || 'Administrative revocation');
+      setRevokeModalCert(null);
+      setRevokeReason('');
+      await loadData();
+    } catch (err: any) {
+      alert(`Revocation failed: ${err.message}`);
+    }
   };
+
+  const filteredCerts = certificates.filter((c) => {
+    if (selectedCourseId === 'all') return true;
+    if (selectedCourseId === 'workshops') return Boolean(c.workshop_id);
+    return c.course_id === selectedCourseId;
+  });
+
+  // Filter candidate students enrolled in courses for issuance review
+  const activeCourseEnrs = courseEnrollments.filter((enr) => {
+    if (selectedCourseId !== 'all' && selectedCourseId !== 'workshops') {
+      return enr.course_id === selectedCourseId;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -75,137 +113,193 @@ export const AdminCertificates: React.FC = () => {
             Certificate Issuance & Distribution
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Authorize verifiable certificates of completion, dispatch PDF credentials, and manage credentials revocation.
+            Authorize verifiable certificates of completion, dispatch PDF credentials, and review completion records.
           </p>
         </div>
 
-        <Badge variant="brand" className="text-xs px-3 py-1 font-bold">
-          Issued Certificates: {certificates.filter((c) => c.status === 'issued').length}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedCourseId}
+            onChange={(e) => setSelectedCourseId(e.target.value)}
+            className="px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none"
+          >
+            <option value="all">All Scoped Credentials</option>
+            <option value="workshops">Workshop Credentials</option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>
+                Course: {c.title}
+              </option>
+            ))}
+          </select>
+
+          <Badge variant="brand" className="text-xs px-3 py-1 font-bold">
+            Issued: {certificates.filter((c) => c.status === 'issued').length}
+          </Badge>
+        </div>
       </div>
 
       {/* Issued Certificates Table */}
       <Card className="overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+            Active Issued Credentials
+          </h3>
+          <span className="text-xs text-slate-400">Total: {filteredCerts.length}</span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="py-3.5 px-4">Certificate ID</th>
                 <th className="py-3.5 px-4">Student</th>
-                <th className="py-3.5 px-4">Workshop</th>
+                <th className="py-3.5 px-4">Program / Course</th>
                 <th className="py-3.5 px-4">Issue Date</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-              {certificates.map((cert) => (
-                <tr key={cert.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3.5 px-4">
-                    <span className="font-mono font-bold text-slate-900 dark:text-white block">
-                      {cert.certificate_number}
-                    </span>
-                    <Link
-                      to={`/verify-certificate/${cert.certificate_number}`}
-                      className="text-[10px] text-brand-600 hover:underline"
-                    >
-                      Public Verify URL
-                    </Link>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <span className="font-bold text-slate-900 dark:text-white block">
-                      {cert.student?.full_name}
-                    </span>
-                    <span className="text-[11px] text-slate-400">{cert.student?.email}</span>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <span className="font-semibold text-slate-900 dark:text-white truncate block max-w-[200px]">
-                      {cert.workshop?.title}
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-4 whitespace-nowrap text-slate-500">
-                    {formatDate(cert.issue_date)}
-                  </td>
-
-                  <td className="py-3.5 px-4 whitespace-nowrap">
-                    <Badge variant={cert.status === 'issued' ? 'success' : 'destructive'}>
-                      {cert.status === 'issued' ? 'Active & Issued' : 'Revoked'}
-                    </Badge>
-                  </td>
-
-                  <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownloadPDF(cert)}
-                      leftIcon={<Download className="w-3.5 h-3.5" />}
-                    >
-                      Download PDF
-                    </Button>
-
-                    {cert.status === 'issued' && (
-                      <button
-                        onClick={() => setRevokeModalCert(cert)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                        title="Revoke Certificate"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    )}
+              {filteredCerts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-xs text-slate-400">
+                    No certificates issued for this selection.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredCerts.map((cert) => {
+                  const programTitle = cert.course?.title || cert.workshop?.title || 'Certification';
+                  return (
+                    <tr key={cert.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <span className="font-mono font-bold text-slate-900 dark:text-white block">
+                          {cert.certificate_number}
+                        </span>
+                        <Link
+                          to={`/verify-certificate/${cert.certificate_number}`}
+                          className="text-[10px] text-brand-600 hover:underline"
+                        >
+                          Public Verify URL
+                        </Link>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <span className="font-bold text-slate-900 dark:text-white block">
+                          {cert.student?.full_name}
+                        </span>
+                        <span className="text-[11px] text-slate-400">{cert.student?.email}</span>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <span className="font-semibold text-slate-900 dark:text-white truncate block max-w-[200px]">
+                          {programTitle}
+                        </span>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold">
+                          {cert.course_id ? 'Course' : 'Workshop'}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap text-slate-500">
+                        {formatDate(cert.issue_date)}
+                      </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <Badge variant={cert.status === 'issued' ? 'success' : 'destructive'}>
+                          {cert.status === 'issued' ? 'Active & Issued' : 'Revoked'}
+                        </Badge>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadPDF(cert)}
+                          leftIcon={<Download className="w-3.5 h-3.5" />}
+                        >
+                          Download PDF
+                        </Button>
+
+                        {cert.status === 'issued' && (
+                          <button
+                            onClick={() => setRevokeModalCert(cert)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                            title="Revoke Certificate"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </Card>
 
-      {/* Eligible Students for Issuance Section */}
+      {/* Course Completion & Pending Issuance Section */}
       <Card className="p-6 space-y-4">
-        <h3 className="font-bold text-base text-slate-900 dark:text-white">
-          Eligible Students Pending Certificate Generation
-        </h3>
-        <p className="text-xs text-slate-500">
-          Students who have completed course requirements and are awaiting administrative certificate generation.
-        </p>
+        <div>
+          <h3 className="font-bold text-base text-slate-900 dark:text-white">
+            Enrolled Students Course Progress & Certificate Issuance
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Evaluate student curriculum completion, assignment submissions, and issue official course credentials.
+          </p>
+        </div>
 
         <div className="space-y-3">
-          {students.map((st) => {
-            const defaultWorkshop = workshops[0];
-            const alreadyHas = certificates.some(
-              (c) => c.student_id === st.id && c.workshop_id === defaultWorkshop?.id && c.status === 'issued'
-            );
+          {activeCourseEnrs.length === 0 ? (
+            <p className="text-xs text-slate-400 py-6 text-center">
+              No students enrolled in the selected courses.
+            </p>
+          ) : (
+            activeCourseEnrs.map((enr) => {
+              const alreadyHas = certificates.some(
+                (c) => c.student_id === enr.student_id && c.course_id === enr.course_id && c.status === 'issued'
+              );
+              const progress = enr.progress_percentage || 0;
+              const isEligible = progress >= 100 || enr.is_completed;
 
-            return (
-              <div
-                key={st.id}
-                className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
-              >
-                <div>
-                  <h4 className="font-bold text-slate-900 dark:text-white text-sm">{st.full_name}</h4>
-                  <p className="text-slate-500">{st.college_name} • {st.department}</p>
-                </div>
+              return (
+                <div
+                  key={enr.id}
+                  className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                        {enr.student?.full_name || 'Enrolled Student'}
+                      </h4>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {enr.student?.email}
+                      </span>
+                    </div>
+                    <p className="text-slate-500">
+                      Course: <strong>{enr.course?.title}</strong> • Progress: <strong>{progress}%</strong> ({enr.completed_sessions || 0}/{enr.total_sessions || 0} sessions)
+                    </p>
+                  </div>
 
-                <div>
-                  {alreadyHas ? (
-                    <Badge variant="success">Certificate Already Issued</Badge>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleIssueCertificate(st.id, defaultWorkshop?.id)}
-                      leftIcon={<Award className="w-3.5 h-3.5" />}
-                    >
-                      Generate & Issue Certificate
-                    </Button>
-                  )}
+                  <div>
+                    {alreadyHas ? (
+                      <Badge variant="success">Certificate Active</Badge>
+                    ) : (
+                      <Button
+                        variant={isEligible ? 'primary' : 'outline'}
+                        size="sm"
+                        onClick={() => handleIssueCourseCert(enr.student_id, enr.course_id)}
+                        leftIcon={<Award className="w-3.5 h-3.5" />}
+                        disabled={isProcessing}
+                      >
+                        {isEligible ? 'Approve & Issue Certificate' : 'Force Issue Certificate'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </Card>
 

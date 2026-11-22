@@ -14,11 +14,12 @@ export const AdminSettingsPage: React.FC = () => {
   const [supportPhone, setSupportPhone] = useState('');
   const [upiId, setUpiId] = useState('');
   const [qrCodeUrl, setQrCodeUrl] = useState('');
-  const [signatory, setSignatory] = useState('Dr. T. N. Venkatesh');
+  const [signatory, setSignatory] = useState('Thamilaran');
   const [signatoryTitle, setSignatoryTitle] = useState('Program Director & Chief Architect');
 
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     dataProvider.getAdminSettings().then((s) => {
@@ -30,24 +31,33 @@ export const AdminSettingsPage: React.FC = () => {
       setQrCodeUrl(s.payment_qr_code_url || '');
       if (s.certificate_signatory) setSignatory(s.certificate_signatory);
       if (s.certificate_title) setSignatoryTitle(s.certificate_title);
+    }).catch(err => {
+      console.error('Error loading admin settings:', err);
     });
   }, []);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    await dataProvider.updateAdminSettings({
-      whatsapp_group_url: whatsappUrl,
-      support_email: supportEmail,
-      support_phone: supportPhone,
-      payment_upi_id: upiId,
-      payment_qr_code_url: qrCodeUrl,
-      certificate_signatory: signatory,
-      certificate_title: signatoryTitle,
-    });
-    setIsSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    setErrorMessage(null);
+    try {
+      await dataProvider.updateAdminSettings({
+        whatsapp_group_url: whatsappUrl,
+        support_email: supportEmail,
+        support_phone: supportPhone,
+        payment_upi_id: upiId,
+        payment_qr_code_url: qrCodeUrl,
+        certificate_signatory: signatory,
+        certificate_title: signatoryTitle,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err: any) {
+      console.error('Failed to save settings:', err);
+      setErrorMessage(err.message || 'Failed to save settings to database');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -68,9 +78,15 @@ export const AdminSettingsPage: React.FC = () => {
         </div>
       )}
 
+      {errorMessage && (
+        <div className="p-4 rounded-2xl bg-rose-50 text-rose-700 text-xs font-semibold flex items-center gap-2 border border-rose-200 shadow-sm">
+          <Settings className="w-5 h-5 text-rose-500" /> {errorMessage}
+        </div>
+      )}
+
       <form onSubmit={handleSaveSettings} className="space-y-6">
         {/* WhatsApp & Community Settings (Section 14) */}
-        <Card className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
+        <Card wavy className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 flex items-center justify-center">
               <MessageCircle className="w-5 h-5" />
@@ -96,7 +112,7 @@ export const AdminSettingsPage: React.FC = () => {
         </Card>
 
         {/* Manual Payment UPI Settings (Section 4) */}
-        <Card className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
+        <Card wavy className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
             <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400 flex items-center justify-center">
               <CreditCard className="w-5 h-5" />
@@ -130,7 +146,7 @@ export const AdminSettingsPage: React.FC = () => {
         </Card>
 
         {/* Certificate Customization & Signatory (Section 15) */}
-        <Card className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
+        <Card wavy className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
             <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400 flex items-center justify-center">
               <Award className="w-5 h-5" />
@@ -163,7 +179,7 @@ export const AdminSettingsPage: React.FC = () => {
         </Card>
 
         {/* Support Helpline Settings */}
-        <Card className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
+        <Card wavy className="p-6 sm:p-8 space-y-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
             <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400 flex items-center justify-center">
               <HelpCircle className="w-5 h-5" />

@@ -14,7 +14,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full space-y-1.5">
         {label && (
-          <label htmlFor={inputId} className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+          <label
+            htmlFor={inputId}
+            className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+          >
             {label}
           </label>
         )}
@@ -23,10 +26,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           ref={ref}
           className={cn(
-            'flex h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500',
+            'flex h-11 w-full rounded-2xl border border-transparent bg-[#eef3f8] px-4 py-2.5 text-xs font-semibold text-slate-800 transition-all placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b6b3a] focus:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-900',
             error
-              ? 'border-rose-500 focus:ring-rose-500 dark:border-rose-500'
-              : 'border-slate-300 dark:border-slate-700',
+              ? 'border-rose-400 bg-rose-50/60 focus:ring-rose-500 dark:border-rose-500'
+              : '',
             className
           )}
           {...props}
