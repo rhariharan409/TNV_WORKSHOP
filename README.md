@@ -172,4 +172,5 @@ The TNV Workshop application is architected for modular integration into the fut
 - User profiles maintain universal identifiers (`UUID`).
 - APIs and service providers are abstracted behind `src/lib/dataProvider.ts`, ready for future SSO (Single Sign-On) and OAuth2 providers.
 #   T N V _ W O R K S H O P  
+ #   T N V _ P R O J E C T _ G S X  
  
