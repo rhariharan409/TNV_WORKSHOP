@@ -449,7 +449,7 @@ export const dataProvider = {
   // ==========================================
   // 4. COURSES, MODULES, SESSIONS & ENROLLMENT (Supabase Connected)
   // ==========================================
-  async getCourses(options?: { workshopId?: string; adminId?: string; publishedOnly?: boolean } | string): Promise<Course[]> {
+  async getCourses(options?: { workshopId?: string; adminId?: string; publishedOnly?: boolean; isSuperAdmin?: boolean } | string): Promise<Course[]> {
     if (isSupabaseConfigured()) {
       const opts = typeof options === 'string' ? { workshopId: options } : options || {};
       let courses: any[] = [];
@@ -469,11 +469,14 @@ export const dataProvider = {
       }
 
       let filteredCourses = courses || [];
-      if (opts.adminId) {
+      // Super admins see all courses regardless of created_by
+      if (opts.adminId && !opts.isSuperAdmin) {
         filteredCourses = filteredCourses.filter((c: any) => !c.created_by || c.created_by === opts.adminId);
       }
       if (opts.publishedOnly) {
-        filteredCourses = filteredCourses.filter((c: any) => c.is_published && (!c.status || c.status === 'published'));
+        filteredCourses = filteredCourses.filter(
+          (c: any) => c.is_published !== false && (!c.status || c.status === 'published' || c.status === 'active')
+        );
       }
 
       // Fetch enrollment counts and module/session counts (safely selecting course_id)
@@ -732,13 +735,15 @@ export const dataProvider = {
         .update({
           is_published: false,
           status: 'draft',
+          published_at: null,
+          published_by: null,
         })
         .eq('id', id);
 
       if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
         const retry = await supabase
           .from('courses')
-          .update({ is_published: false })
+          .update({ is_published: false, status: 'draft' })
           .eq('id', id);
         error = retry.error;
       }
@@ -1107,7 +1112,22 @@ export const dataProvider = {
 
       return newEnr as CourseEnrollment;
     }
-    throw new Error('Supabase is not configured');
+
+    // Offline / Demo fallback when Supabase is not configured
+    const localEnrs = getLocalStore<CourseEnrollment[]>('course_enrollments', []);
+    const newEnr: CourseEnrollment = {
+      id: generateUUID(),
+      course_id: courseId,
+      student_id: studentId,
+      status: 'active',
+      progress_percentage: 0,
+      is_completed: false,
+      enrolled_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setLocalStore('course_enrollments', [newEnr, ...localEnrs]);
+    return newEnr;
   },
 
   async getStudentCourseEnrollments(studentId: string): Promise<CourseEnrollment[]> {
@@ -1808,8 +1828,16 @@ export const dataProvider = {
       const { data, error } = await q;
 
       if (error) {
-        console.error('Error fetching assignments from Supabase:', error);
-        throw new Error(`Failed to fetch assignments: ${error.message}`);
+        console.warn('Error fetching assignments with relation from Supabase, attempting flat query:', error);
+        try {
+          let flatQuery = supabase.from('assignments').select('*');
+          if (courseId) flatQuery = flatQuery.eq('course_id', courseId);
+          const flatRes = await flatQuery;
+          if (!flatRes.error && flatRes.data) {
+            return flatRes.data as Assignment[];
+          }
+        } catch {}
+        return [];
       }
       let list = (data || []) as Assignment[];
       if (adminId) {
@@ -2496,7 +2524,6 @@ export const dataProvider = {
   },
 
   async getLiveSessions(courseId?: string): Promise<LiveSession[]> {
-    let list: LiveSession[] = [];
     if (isSupabaseConfigured()) {
       try {
         let q = supabase
@@ -2512,25 +2539,24 @@ export const dataProvider = {
             .from('live_sessions')
             .select('*, course:courses(title, slug, instructor_name, is_published)');
           if (!fallbackRes.error && fallbackRes.data) {
-            list = this.normalizeLiveSessions(fallbackRes.data);
+            return this.normalizeLiveSessions(fallbackRes.data);
           }
-        } else if (data) {
-          list = this.normalizeLiveSessions(data);
+          console.error('Error fetching live sessions from Supabase:', error);
+          return [];
         }
+        return this.normalizeLiveSessions(data || []);
       } catch (err: any) {
         console.error('Error fetching live sessions from Supabase:', err);
+        return [];
       }
     }
 
-    // Merge with local store for complete reliability
+    // Local fallback ONLY when Supabase is not configured
     const local = getLocalStore<LiveSession[]>('live_sessions', []);
-    const existingIds = new Set(list.map((s) => s.id));
-    const merged = [...list, ...local.filter((s) => !existingIds.has(s.id))];
-
     if (courseId) {
-      return merged.filter((s) => s.course_id === courseId);
+      return local.filter((s) => s.course_id === courseId);
     }
-    return merged;
+    return local;
   },
 
   async createLiveSession(session: Partial<LiveSession>): Promise<LiveSession> {
@@ -2540,8 +2566,6 @@ export const dataProvider = {
     const platform = session.platform || 'Google Meet';
     const meetingLink = session.meeting_link || 'https://meet.google.com/tnv-work-live';
     const instructorName = session.instructor_name || 'Thamilaran (Admin)';
-
-    let createdSession: LiveSession | null = null;
 
     if (isSupabaseConfigured()) {
       // Primary payload matching schema: scheduled_date, start_time, end_time
@@ -2558,70 +2582,68 @@ export const dataProvider = {
         is_published: session.is_published ?? true,
       };
 
-      try {
-        let { data, error } = await supabase
+      let { data, error } = await supabase
+        .from('live_sessions')
+        .insert(payload)
+        .select('*, course:courses(title, slug, instructor_name)')
+        .single();
+
+      if (error) {
+        console.warn('Primary insert failed, attempting alternative payload schema:', error.message);
+        const altPayload: any = {
+          course_id: session.course_id,
+          title: session.title || 'Live Workshop Session',
+          description: session.description || null,
+          session_date: new Date(`${scheduledDate}T${startTime}:00Z`).toISOString(),
+          duration_minutes: 90,
+          platform: platform.toLowerCase().includes('zoom') ? 'zoom' : 'google_meet',
+          meeting_link: meetingLink,
+          is_published: session.is_published ?? true,
+        };
+
+        const altRes = await supabase
           .from('live_sessions')
-          .insert(payload)
+          .insert(altPayload)
           .select('*, course:courses(title, slug, instructor_name)')
           .single();
 
-        if (error) {
-          console.warn('Primary insert failed, attempting alternative payload schema:', error.message);
-          const altPayload: any = {
-            course_id: session.course_id,
-            title: session.title || 'Live Workshop Session',
-            description: session.description || null,
-            session_date: new Date(`${scheduledDate}T${startTime}:00Z`).toISOString(),
-            duration_minutes: 90,
-            platform: platform.toLowerCase().includes('zoom') ? 'zoom' : 'google_meet',
-            meeting_link: meetingLink,
-            is_published: session.is_published ?? true,
-          };
-
-          const altRes = await supabase
-            .from('live_sessions')
-            .insert(altPayload)
-            .select('*, course:courses(title, slug, instructor_name)')
-            .single();
-
-          if (altRes.error) {
-            console.error('All live_sessions inserts rejected by DB:', altRes.error);
-            throw altRes.error;
-          }
-          data = altRes.data;
+        if (altRes.error) {
+          console.error('All live_sessions inserts rejected by DB:', altRes.error);
+          throw new Error(`Failed to save live session to Supabase: ${altRes.error.message}`);
         }
-
-        if (data) {
-          createdSession = this.normalizeLiveSessions([data])[0];
-        }
-      } catch (err: any) {
-        console.warn('Supabase live session insertion failed, falling back to local storage:', err.message);
+        data = altRes.data;
       }
+
+      const createdSession = this.normalizeLiveSessions([data])[0];
+
+      // Dispatch notification to all students enrolled in this course
+      if (createdSession.course_id) {
+        this.notifyEnrolledStudentsOfLiveSession(createdSession.course_id, createdSession);
+      }
+
+      return createdSession;
     }
 
-    if (!createdSession) {
-      createdSession = {
-        id: `live-${Date.now()}`,
-        course_id: session.course_id || '',
-        title: session.title || 'Live Workshop Session',
-        description: session.description || '',
-        scheduled_date: scheduledDate,
-        start_time: startTime,
-        end_time: endTime,
-        meeting_link: meetingLink,
-        platform: platform,
-        instructor_name: instructorName,
-        is_published: session.is_published ?? true,
-        created_at: new Date().toISOString(),
-        course: session.course,
-      };
-    }
+    // Local / Demo fallback ONLY when Supabase is not configured
+    const createdSession: LiveSession = {
+      id: `live-${Date.now()}`,
+      course_id: session.course_id || '',
+      title: session.title || 'Live Workshop Session',
+      description: session.description || '',
+      scheduled_date: scheduledDate,
+      start_time: startTime,
+      end_time: endTime,
+      meeting_link: meetingLink,
+      platform: platform,
+      instructor_name: instructorName,
+      is_published: session.is_published ?? true,
+      created_at: new Date().toISOString(),
+      course: session.course,
+    };
 
-    // Cache locally
     const local = getLocalStore<LiveSession[]>('live_sessions', []);
-    setLocalStore('live_sessions', [createdSession, ...local.filter((s) => s.id !== createdSession?.id)]);
+    setLocalStore('live_sessions', [createdSession, ...local.filter((s) => s.id !== createdSession.id)]);
 
-    // Dispatch notification to all students enrolled in this course
     if (createdSession.course_id) {
       this.notifyEnrolledStudentsOfLiveSession(createdSession.course_id, createdSession);
     }
@@ -2631,11 +2653,12 @@ export const dataProvider = {
 
   async deleteLiveSession(id: string): Promise<void> {
     if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('live_sessions').delete().eq('id', id);
-      } catch (err) {
-        console.warn('Failed to delete live session from Supabase:', err);
+      const { error } = await supabase.from('live_sessions').delete().eq('id', id);
+      if (error) {
+        console.error('Failed to delete live session from Supabase:', error);
+        throw new Error(`Failed to delete live session: ${error.message}`);
       }
+      return;
     }
     const local = getLocalStore<LiveSession[]>('live_sessions', []);
     setLocalStore('live_sessions', local.filter((s) => s.id !== id));

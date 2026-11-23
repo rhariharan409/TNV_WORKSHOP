@@ -58,6 +58,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
     if (res.success) {
       const cleanEmail = trimmedEmail.toLowerCase();
       const isAdmin =
+        res.role === 'admin' ||
+        res.role === 'super_admin' ||
         cleanEmail === 'materadmin@gmail.com' ||
         cleanEmail === 'masteradmin@gmail.com' ||
         cleanEmail === 'materadmin' ||

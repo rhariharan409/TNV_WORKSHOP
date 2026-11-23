@@ -1,8 +1,14 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Raw environment variables
-const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-const rawSupabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+// Raw environment variables (with default production fallback for Vercel/cloud deployments)
+const rawSupabaseUrl = (
+  import.meta.env.VITE_SUPABASE_URL ||
+  'https://hbocacibcgxkufvxhqpb.supabase.co'
+).trim();
+const rawSupabaseAnonKey = (
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  'sb_publishable_hGIEVnkNBHXh4FYLD7VWgw_MlXVnpXd'
+).trim();
 
 // Normalize the Supabase URL:
 // Automatically strip trailing slashes and common accidental path suffixes like /rest/v1 or /rest/v1/

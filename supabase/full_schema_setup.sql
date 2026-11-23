@@ -2785,8 +2785,12 @@ CREATE POLICY "Courses select policy"
     ON public.courses FOR SELECT
     USING (
         public.is_super_admin()
-        OR (public.is_admin() AND (created_by = auth.uid() OR created_by IS NULL))
-        OR (is_published = TRUE AND (status = 'published' OR status IS NULL))
+        OR public.is_admin()
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'admin')
+        )
+        OR (is_published = TRUE AND (status = 'published' OR status = 'active' OR status IS NULL))
     );
 
 CREATE POLICY "Admins insert own courses"

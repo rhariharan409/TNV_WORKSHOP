@@ -43,8 +43,13 @@ export const AdminCourses: React.FC = () => {
   const loadData = async () => {
     if (!user) return;
     setIsLoading(true);
-    const adminId = user.role === 'super_admin' ? undefined : user.id;
-    const cList = await dataProvider.getCourses({ adminId });
+    // Super admins see all courses regardless of created_by
+    const isSuperAdmin =
+      user.role === 'super_admin' ||
+      user.email?.toLowerCase() === 'materadmin@gmail.com' ||
+      user.email?.toLowerCase() === 'masteradmin@gmail.com';
+    const adminId = isSuperAdmin ? undefined : user.id;
+    const cList = await dataProvider.getCourses({ adminId, isSuperAdmin });
     setCourses(cList);
     setIsLoading(false);
   };
@@ -56,7 +61,8 @@ export const AdminCourses: React.FC = () => {
   const handleTogglePublish = async (course: Course) => {
     if (!user) return;
     setActionLoading(course.id);
-    const isCurrentlyPublished = Boolean(course.is_published);
+    const isCurrentlyPublished =
+      Boolean(course.is_published) || String(course.status || '').trim().toLowerCase() === 'published';
 
     try {
       if (isCurrentlyPublished) {
@@ -91,7 +97,10 @@ export const AdminCourses: React.FC = () => {
     }
   };
 
-  const mainDraftCourses = courses.filter((c) => !c.is_published);
+  const mainDraftCourses = courses.filter((c) => {
+    const status = String(c.status || '').trim().toLowerCase();
+    return c.is_published === false || status === 'draft';
+  });
   const publishedCourses = courses.filter((c) => Boolean(c.is_published));
   const currentList = activeTab === 'main' ? mainDraftCourses : publishedCourses;
 
