@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { Settings, Save, CheckCircle2, MessageCircle, CreditCard, Award, HelpCircle } from 'lucide-react';
+import { isValidEmail } from '../../lib/utils';
 
 export const AdminSettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<AdminSettings | null>(null);
@@ -38,6 +39,10 @@ export const AdminSettingsPage: React.FC = () => {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (supportEmail && !isValidEmail(supportEmail)) {
+      setErrorMessage('Please provide a valid support email address.');
+      return;
+    }
     setIsSaving(true);
     setErrorMessage(null);
     try {

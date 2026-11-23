@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Mail, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { isValidEmail } from '../lib/utils';
 
 export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -14,12 +15,16 @@ export const ForgotPasswordPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!isValidEmail(cleanEmail)) {
+      setError('Please provide a valid email address.');
+      return;
+    }
     setIsLoading(true);
     setError(null);
 
     if (isSupabaseConfigured()) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) {

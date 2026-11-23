@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Profile, UserRole } from '../types/database';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dataProvider } from '../lib/dataProvider';
-import { generateUUID } from '../lib/utils';
+import { generateUUID, EMAIL_REGEX } from '../lib/utils';
 
 interface AuthContextType {
   user: Profile | null;
@@ -11,6 +11,7 @@ interface AuthContextType {
   isLoading: boolean;
   isConfigured: boolean;
   login: (email: string, password?: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>;
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signup: (data: {
     email: string;
     password?: string;
@@ -136,95 +137,113 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    if (!cleanEmail) {
+    // Validate email format and password presence
+    if (!cleanEmail || !cleanPass || !EMAIL_REGEX.test(cleanEmail)) {
       setIsLoading(false);
-      return { success: false, error: 'Please enter your email or username.' };
+      return { success: false, error: 'Invalid email or password' };
     }
 
-    // 1. ADMIN AUTHENTICATION
-    // Dedicated administrator account: MaterAdmin@gmail.com
+    // 1. ADMIN ACCOUNT CHECK (Dedicated administrator: MaterAdmin@gmail.com)
     const isAdminAccount =
       cleanEmail === 'materadmin@gmail.com' ||
       cleanEmail === 'masteradmin@gmail.com' ||
       cleanEmail === 'materadmin' ||
       cleanEmail === 'masteradmin';
 
-    if (isAdminAccount) {
-      if (isConfigured) {
-        // Real Supabase Auth for Admin: never hardcodes plaintext password
-        const authEmail = cleanEmail.includes('@') ? cleanEmail : 'MaterAdmin@gmail.com';
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password: cleanPass,
-        });
+    if (isConfigured) {
+      const authEmail = cleanEmail.includes('@') ? cleanEmail : 'MaterAdmin@gmail.com';
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: cleanPass,
+      });
 
-        if (signInError) {
-          setIsLoading(false);
-          let errMsg = signInError.message;
-          if (errMsg.toLowerCase().includes('invalid login credentials')) {
-            errMsg = 'Invalid admin credentials. Please enter the correct password for MaterAdmin@gmail.com.';
-          }
-          return { success: false, error: errMsg };
-        }
-
-        if (!signInData?.user) {
-          setIsLoading(false);
-          return { success: false, error: 'Admin login failed. User session not found.' };
-        }
-
-        const authUserId = signInData.user.id;
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', authUserId)
-          .maybeSingle();
-
-        let adminProfile: Profile;
-        if (profileData) {
-          adminProfile = {
-            ...profileData,
-            role:
-              profileData.role === 'admin' || profileData.role === 'super_admin'
-                ? profileData.role
-                : 'super_admin',
-          };
-        } else {
-          // If no row in public.profiles yet, create and upsert it with the real auth uid
-          const newAdminProfile: Profile = {
-            id: authUserId,
-            email: signInData.user.email || 'MaterAdmin@gmail.com',
-            full_name: signInData.user.user_metadata?.full_name || 'Thamilaran (Admin)',
-            role: 'super_admin',
-            college_name: 'TNV Workshop Academy',
-            department: 'Administration',
-            year_of_study: 'Faculty',
-            phone: '+91 98765 43210',
-            is_suspended: false,
-            created_at: new Date().toISOString(),
-          };
-          try {
-            await supabase.from('profiles').upsert(newAdminProfile, { onConflict: 'id' });
-          } catch (e) {
-            console.warn('Profile upsert notice:', e);
-          }
-          adminProfile = newAdminProfile;
-        }
-
-        setUser(adminProfile);
-        localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(adminProfile));
+      if (signInError || !signInData?.user) {
         setIsLoading(false);
-        return { success: true, role: adminProfile.role };
+        // Requirement 5: Always show the generic message "Invalid email or password" for any login failure
+        return { success: false, error: 'Invalid email or password' };
       }
 
-      // Supabase is NOT configured (Demo mode fallback only)
+      const authUserId = signInData.user.id;
+
+      // Load profile to verify role
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUserId)
+        .maybeSingle();
+
+      const isProfileAdmin =
+        isAdminAccount ||
+        profileData?.role === 'admin' ||
+        profileData?.role === 'super_admin';
+
+      // 2. FOR STUDENTS: READ public.signup_records
+      if (!isProfileAdmin) {
+        const { data: record, error: recError } = await supabase
+          .from('signup_records')
+          .select('*')
+          .eq('user_id', authUserId)
+          .maybeSingle();
+
+        if (recError || !record || !record.password_set) {
+          // If no record or password_set is false, signOut and show generic error
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          return { success: false, error: 'Invalid email or password' };
+        }
+      }
+
+      // Log login event via RPC
+      try {
+        await supabase.rpc('log_login_event', { p_method: 'password' });
+      } catch (logErr) {
+        console.warn('log_login_event RPC notice:', logErr);
+      }
+
+      let activeProfile: Profile;
+      if (profileData) {
+        activeProfile = {
+          ...profileData,
+          role: isProfileAdmin
+            ? profileData.role === 'admin' || profileData.role === 'super_admin'
+              ? profileData.role
+              : 'super_admin'
+            : (profileData.role as UserRole) || 'student',
+        };
+      } else {
+        const newProfile: Profile = {
+          id: authUserId,
+          email: signInData.user.email || cleanEmail,
+          full_name:
+            signInData.user.user_metadata?.full_name ||
+            (isProfileAdmin ? 'Thamilaran (Admin)' : 'TNV Student'),
+          role: isProfileAdmin ? 'super_admin' : 'student',
+          college_name: isProfileAdmin ? 'TNV Workshop Academy' : 'Engineering College',
+          department: isProfileAdmin ? 'Administration' : 'Information Technology',
+          year_of_study: isProfileAdmin ? 'Faculty' : '3rd Year',
+          phone: isProfileAdmin ? '+91 98765 43210' : '+91 98765 00000',
+          is_suspended: false,
+          created_at: new Date().toISOString(),
+        };
+        try {
+          await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
+        } catch (e) {
+          console.warn('Profile upsert notice:', e);
+        }
+        activeProfile = newProfile;
+      }
+
+      setUser(activeProfile);
+      localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(activeProfile));
+      setIsLoading(false);
+      return { success: true, role: activeProfile.role };
+    }
+
+    // SUPABASE IS NOT CONFIGURED (Demo mode fallback only)
+    if (isAdminAccount) {
       if (cleanPass !== 'AdminPassword2026!') {
         setIsLoading(false);
-        return {
-          success: false,
-          error: cleanPass
-            ? 'Invalid password. Please enter the correct password for MaterAdmin@gmail.com.'
-            : 'Please enter your password.',
-        };
+        return { success: false, error: 'Invalid email or password' };
       }
 
       const fallbackAdminProfile: Profile = {
@@ -246,251 +265,123 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true, role: 'super_admin' };
     }
 
-    // 2. STUDENT AUTHENTICATION (All other emails & passwords are for students)
-      if (!cleanPass) {
-        setIsLoading(false);
-        return { success: false, error: 'Please enter your student account password.' };
+    // Demo student fallback
+    let studentProfile: Profile | null = null;
+    try {
+      const profiles = await dataProvider.getProfiles();
+      const matched = profiles.find((p) => p.email.toLowerCase() === cleanEmail);
+      if (matched) {
+        studentProfile = { ...matched, role: 'student' };
       }
+    } catch { }
 
-      // When Supabase is configured: strictly use real supabase.auth
-      if (isConfigured) {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: cleanPass,
-        });
+    if (!studentProfile) {
+      const formattedName = cleanEmail
+        .split('@')[0]
+        .replace(/[._]/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
 
-        if (signInError) {
-          setIsLoading(false);
-          let errMsg = signInError.message;
-          if (errMsg.toLowerCase().includes('email not confirmed')) {
-            errMsg = 'Email not confirmed. Please check your email to confirm your account, then log in.';
-          } else if (errMsg.toLowerCase().includes('invalid login credentials')) {
-            errMsg = 'Invalid login credentials. Please verify your email and password.';
-          }
-          // Do NOT create any fake profile. Return real Supabase error.
-          return { success: false, error: errMsg };
-        }
-
-        if (!signInData?.user) {
-          setIsLoading(false);
-          return { success: false, error: 'Login failed. User session not found.' };
-        }
-
-        const authUserId = signInData.user.id;
-
-        // Load matching row from public.profiles
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', authUserId)
-          .maybeSingle();
-
-        let studentProfile: Profile;
-        if (profileData) {
-          studentProfile = profileData as Profile;
-        } else {
-          // Fallback: If handle_new_user trigger had not created the profile, upsert it now with real auth uid
-          const formattedName = cleanEmail
-            .split('@')[0]
-            .replace(/[._]/g, ' ')
-            .replace(/\b\w/g, (c) => c.toUpperCase());
-
-          const newProfilePayload: Profile = {
-            id: authUserId,
-            email: signInData.user.email || cleanEmail,
-            full_name: signInData.user.user_metadata?.full_name || formattedName || 'TNV Student',
-            role: 'student',
-            college_name: signInData.user.user_metadata?.college_name || 'Engineering College',
-            department: signInData.user.user_metadata?.department || 'Information Technology',
-            year_of_study: signInData.user.user_metadata?.year_of_study || '3rd Year',
-            phone: signInData.user.user_metadata?.phone || '+91 98765 00000',
-            is_suspended: false,
-            created_at: new Date().toISOString(),
-          };
-
-          try {
-            await supabase.from('profiles').upsert(newProfilePayload, { onConflict: 'id' });
-          } catch (upsertErr) {
-            console.warn('Profile direct upsert notice:', upsertErr);
-          }
-
-          studentProfile = newProfilePayload;
-        }
-
-        setUser(studentProfile);
-        localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(studentProfile));
-        setIsLoading(false);
-        return { success: true, role: studentProfile.role };
-      }
-
-      // LOCAL FALLBACK ONLY WHEN SUPABASE IS NOT CONFIGURED (Demo Mode)
-      let studentProfile: Profile | null = null;
-      try {
-        const profiles = await dataProvider.getProfiles();
-        const matched = profiles.find((p) => p.email.toLowerCase() === cleanEmail);
-        if (matched) {
-          studentProfile = { ...matched, role: 'student' };
-        }
-      } catch { }
-
-      if (!studentProfile) {
-        try {
-          const savedProfiles = JSON.parse(localStorage.getItem('tnv_student_profiles') || '[]');
-          const matched = savedProfiles.find((p: any) => p.email.toLowerCase() === cleanEmail);
-          if (matched) {
-            studentProfile = matched;
-          }
-        } catch { }
-      }
-
-      if (!studentProfile) {
-        const formattedName = cleanEmail
-          .split('@')[0]
-          .replace(/[._]/g, ' ')
-          .replace(/\b\w/g, (c) => c.toUpperCase());
-
-        studentProfile = {
-          id: generateUUID(),
-          email: email.trim(),
-          full_name: formattedName || 'TNV Student',
-          role: 'student',
-          college_name: 'Engineering College',
-          department: 'Information Technology',
-          year_of_study: '3rd Year',
-          phone: '+91 98765 00000',
-          is_suspended: false,
-          created_at: new Date().toISOString(),
-        };
-
-        try {
-          const savedProfiles = JSON.parse(localStorage.getItem('tnv_student_profiles') || '[]');
-          savedProfiles.push(studentProfile);
-          localStorage.setItem('tnv_student_profiles', JSON.stringify(savedProfiles));
-        } catch { }
-      }
-
-      setUser(studentProfile);
-      localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(studentProfile));
-      setIsLoading(false);
-      return { success: true, role: 'student' };
-    };
-
-    const signup = async (data: {
-      email: string;
-      password?: string;
-      fullName: string;
-      phone: string;
-      collegeName: string;
-      department: string;
-      yearOfStudy: string;
-      workshopId?: string;
-    }): Promise<{ success: boolean; error?: string }> => {
-      setIsLoading(true);
-
-      if (isConfigured) {
-        try {
-          // Register using real Supabase Auth
-          const { data: authData, error } = await supabase.auth.signUp({
-            email: data.email.trim(),
-            password: data.password || 'TnvStudent2024!',
-            options: {
-              data: {
-                full_name: data.fullName.trim(),
-                college_name: data.collegeName.trim(),
-                department: data.department.trim(),
-                year_of_study: data.yearOfStudy,
-                phone: data.phone.trim(),
-                workshop_id: data.workshopId || null,
-                role: 'student',
-              },
-            },
-          });
-
-          if (error) {
-            setIsLoading(false);
-            // Show real Supabase error with NO local fallback
-            return { success: false, error: error.message };
-          }
-
-          if (!authData.user) {
-            setIsLoading(false);
-            return { success: false, error: 'Registration failed. User was not created.' };
-          }
-
-          const authUserId = authData.user.id;
-
-          // Ensure row exists in public.profiles for the new user (check handle_new_user trigger; upsert if missing)
-          const newProfile: Profile = {
-            id: authUserId,
-            email: data.email.trim(),
-            full_name: data.fullName.trim(),
-            phone: data.phone.trim(),
-            college_name: data.collegeName.trim(),
-            department: data.department.trim(),
-            year_of_study: data.yearOfStudy,
-            role: 'student',
-            is_suspended: false,
-            created_at: new Date().toISOString(),
-          };
-
-          try {
-            await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
-          } catch (upsertErr) {
-            console.warn('Profile direct upsert notice:', upsertErr);
-          }
-
-          // If workshop selected, create enrollment record
-          if (data.workshopId) {
-            try {
-              await dataProvider.createEnrollment(data.workshopId, authUserId);
-            } catch (e) {
-              console.warn('Post-signup enrollment notice:', e);
-            }
-          }
-
-          // Handle "email confirmation required": if signUp returns no session
-          if (!authData.session) {
-            setIsLoading(false);
-            return {
-              success: false,
-              error: 'Check your email to confirm, then log in',
-            };
-          }
-
-          setUser(newProfile);
-          localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(newProfile));
-          setIsLoading(false);
-          return { success: true };
-        } catch (err: any) {
-          setIsLoading(false);
-          return { success: false, error: err.message || 'Registration failed.' };
-        }
-      }
-
-      // Local / Demo registration only when Supabase is NOT configured
-      const newStudentId = generateUUID();
-      const newProfile: Profile = {
-        id: newStudentId,
-        email: data.email.trim(),
-        full_name: data.fullName.trim(),
-        phone: data.phone.trim(),
-        college_name: data.collegeName.trim(),
-        department: data.department.trim(),
-        year_of_study: data.yearOfStudy,
+      studentProfile = {
+        id: generateUUID(),
+        email: cleanEmail,
+        full_name: formattedName || 'TNV Student',
         role: 'student',
+        college_name: 'Engineering College',
+        department: 'Information Technology',
+        year_of_study: '3rd Year',
+        phone: '+91 98765 00000',
         is_suspended: false,
         created_at: new Date().toISOString(),
       };
+    }
 
-      if (data.workshopId) {
-        await dataProvider.createEnrollment(data.workshopId, newStudentId);
+    setUser(studentProfile);
+    localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(studentProfile));
+    setIsLoading(false);
+    return { success: true, role: 'student' };
+  };
+
+  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    if (isConfigured) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + '/auth/callback',
+          queryParams: { prompt: 'select_account' },
+        },
+      });
+      if (error) {
+        setIsLoading(false);
+        return { success: false, error: error.message };
       }
-
-      setUser(newProfile);
-      localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(newProfile));
-      setIsLoading(false);
       return { success: true };
+    }
+
+    // Demo mode fallback only when isSupabaseConfigured() is false
+    const demoGoogleStudent: Profile = {
+      id: generateUUID(),
+      email: 'student@tnvworkshop.edu.in',
+      full_name: 'Aditya Ramanathan (Student)',
+      role: 'student',
+      college_name: 'PSG College of Technology',
+      department: 'Information Technology',
+      year_of_study: '3rd Year',
+      phone: '+91 98765 11223',
+      is_suspended: false,
+      created_at: new Date().toISOString(),
     };
+    setUser(demoGoogleStudent);
+    localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(demoGoogleStudent));
+    setIsLoading(false);
+    return { success: true };
+  };
+
+  const signup = async (data: {
+    email: string;
+    password?: string;
+    fullName: string;
+    phone: string;
+    collegeName: string;
+    department: string;
+    yearOfStudy: string;
+    workshopId?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+
+    if (isConfigured) {
+      // Requirement 1: Remove the supabase.auth.signUp call used for students when Supabase is configured.
+      setIsLoading(false);
+      return {
+        success: false,
+        error: 'New student registrations must use Continue with Google.',
+      };
+    }
+
+    // Local / Demo registration only when Supabase is NOT configured
+    const newStudentId = generateUUID();
+    const newProfile: Profile = {
+      id: newStudentId,
+      email: data.email.trim(),
+      full_name: data.fullName.trim(),
+      phone: data.phone.trim(),
+      college_name: data.collegeName.trim(),
+      department: data.department.trim(),
+      year_of_study: data.yearOfStudy,
+      role: 'student',
+      is_suspended: false,
+      created_at: new Date().toISOString(),
+    };
+
+    if (data.workshopId) {
+      await dataProvider.createEnrollment(data.workshopId, newStudentId);
+    }
+
+    setUser(newProfile);
+    localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(newProfile));
+    setIsLoading(false);
+    return { success: true };
+  };
 
     const logout = async (): Promise<void> => {
       if (isConfigured) {
@@ -528,6 +419,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isLoading,
           isConfigured,
           login,
+          signInWithGoogle,
           signup,
           logout,
           switchDemoRole,

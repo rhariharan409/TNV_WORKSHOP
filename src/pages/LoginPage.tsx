@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, LogOut, UserCheck, ShieldCheck } from 'lucide-react';
+import { EMAIL_REGEX, isValidEmail } from '../lib/utils';
 
 interface LoginPageProps {
   defaultMode?: 'signin' | 'signup';
@@ -10,7 +11,7 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, login, signup, logout } = useAuth();
+  const { user, login, signInWithGoogle, logout } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>(defaultMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -18,12 +19,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
   // Sign In State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  // Sign Up State (for new students)
-  const [fullName, setFullName] = useState('');
-  const [collegeName, setCollegeName] = useState('');
-  const [department, setDepartment] = useState('');
-  const [phone, setPhone] = useState('');
 
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,19 +30,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
     setMode(defaultMode);
   }, [defaultMode]);
 
+  const handleGoogleAuth = async () => {
+    setError(null);
+    setIsLoading(true);
+    const res = await signInWithGoogle();
+    if (!res.success) {
+      setIsLoading(false);
+      setError(res.error || 'Failed to initialize Google authentication.');
+    }
+  };
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const trimmedEmail = email.trim();
+    const trimmedEmail = email.trim().toLowerCase();
     const trimmedPass = password.trim();
 
-    if (!trimmedEmail) {
-      setError('Please enter your email or username.');
-      return;
-    }
-    if (!trimmedPass) {
-      setError('Please enter your password.');
+    // Validate email with regex
+    if (!trimmedEmail || !trimmedPass || !EMAIL_REGEX.test(trimmedEmail)) {
+      setError('Invalid email or password');
       return;
     }
 
@@ -73,35 +75,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
         navigate('/student/dashboard', { replace: true });
       }
     } else {
-      setError(res.error || 'Invalid credentials. Please verify your email and password.');
-    }
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter both email and password.');
-      return;
-    }
-
-    setIsLoading(true);
-    const res = await signup({
-      email: email.trim(),
-      password: password.trim(),
-      fullName: fullName.trim() || email.split('@')[0],
-      phone: phone.trim() || '+91 98765 00000',
-      collegeName: collegeName.trim() || 'Engineering College',
-      department: department.trim() || 'Information Technology',
-      yearOfStudy: '3rd Year',
-    });
-    setIsLoading(false);
-
-    if (res.success) {
-      navigate('/student/dashboard', { replace: true });
-    } else {
-      setError(res.error || 'Failed to create student account.');
+      // Requirement 5: Always show the generic message "Invalid email or password"
+      setError('Invalid email or password');
     }
   };
 
@@ -121,34 +96,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
   return (
     <div className="min-h-screen flex flex-col bg-[#f0f4f1] text-slate-800 font-sans selection:bg-brand-600 selection:text-white">
       {/* ======================================================== */}
-      {/* 1. TOP GREEN NAVIGATION BAR (Matching Image 2)           */}
-      {/* ======================================================== */}
-      <header className="w-full bg-[#155e32] text-white py-3 px-6 shadow-md z-20">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 overflow-x-auto scrollbar-none text-xs font-semibold tracking-wide">
-          <div className="flex items-center gap-6 sm:gap-8 whitespace-nowrap">
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">About</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Collaborate</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Our services</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Gallery</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">How joining works</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Contact</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Events</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Campaigns</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Donate</span>
-            <span className="cursor-pointer hover:text-emerald-200 transition-colors">Feedback</span>
-          </div>
-
-          <div className="text-[11px] font-bold text-emerald-200 uppercase tracking-widest hidden lg:block">
-            TNV WORKSHOP WEBSITE
-          </div>
-        </div>
-      </header>
-
-      {/* ======================================================== */}
-      {/* 2. MAIN CENTER AUTHENTICATION CARD (Matching Image 2)    */}
+      {/* MAIN CENTER AUTHENTICATION CARD                          */}
       {/* ======================================================== */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-8">
-        <div className="w-full max-w-4xl bg-white rounded-[32px] shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-2 border border-slate-100 min-h-[520px]">
+        <div className="w-full max-w-4xl bg-white rounded-[32px] shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-2 min-h-[520px]">
           {/* ---------------------------------------------------- */}
           {/* LEFT COLUMN: SIGN IN / SIGN UP FORM                  */}
           {/* ---------------------------------------------------- */}
@@ -203,26 +154,66 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
             ) : mode === 'signin' ? (
               /* Sign In Mode */
               <div>
-                <div className="text-center mb-8">
+                <div className="text-center mb-6">
                   <h1 className="text-3xl font-black text-slate-900 tracking-tight">Hello!</h1>
                   <p className="text-xs text-slate-500 font-medium mt-1">Sign in to your account</p>
                 </div>
 
                 {error && (
-                  <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold text-center">
+                  <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold text-center">
                     {error}
                   </div>
                 )}
+
+                {/* 1. Continue with Google Button */}
+                <button
+                  type="button"
+                  onClick={handleGoogleAuth}
+                  disabled={isLoading}
+                  className="w-full py-3 px-4 rounded-2xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-3 active:scale-98 disabled:opacity-60 mb-4"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  <span>Continue with Google</span>
+                </button>
+
+                {/* Divider */}
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-white px-3 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                      Or sign in with email
+                    </span>
+                  </div>
+                </div>
 
                 <form onSubmit={handleSignIn} className="space-y-4">
                   {/* Email / Username Input */}
                   <div className="relative flex items-center">
                     <Mail className="w-4 h-4 text-emerald-700 absolute left-4 pointer-events-none" />
                     <input
-                      type="text"
+                      type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Email or Username"
+                      placeholder="Email Address"
                       required
                       className="w-full h-12 pl-11 pr-4 bg-[#eef3f8] text-slate-800 text-xs font-semibold rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
                     />
@@ -288,85 +279,57 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
                 </div>
               </div>
             ) : (
-              /* Student Sign Up Mode */
-              <div>
-                <div className="text-center mb-6">
-                  <h1 className="text-2xl font-black text-slate-900 tracking-tight">Create Account</h1>
-                  <p className="text-xs text-slate-500 font-medium mt-1">Register for TNV Workshop Academy</p>
+              /* Student Sign Up Mode - Exclusively Real Google Account */
+              <div className="space-y-5">
+                <div className="text-center">
+                  <h1 className="text-2xl font-black text-slate-900 tracking-tight">Student Enrollment</h1>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Join TNV Workshop Academy</p>
                 </div>
 
                 {error && (
-                  <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold text-center">
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold text-center">
                     {error}
                   </div>
                 )}
 
-                <form onSubmit={handleSignUp} className="space-y-3">
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Full Name *"
-                    required
-                    className="w-full h-11 px-4 bg-[#eef3f8] text-slate-800 text-xs font-semibold rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
-                  />
+                <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100 text-[#155e32] text-xs space-y-1.5">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    Verified Google Account Required
+                  </p>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Student registration is exclusively supported via real Google accounts. Click below to authenticate and configure your student account.
+                  </p>
+                </div>
 
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Student Email Address *"
-                    required
-                    className="w-full h-11 px-4 bg-[#eef3f8] text-slate-800 text-xs font-semibold rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
-                  />
-
-                  <div className="relative flex items-center">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Create Password *"
-                      required
-                      className="w-full h-11 px-4 pr-11 bg-[#eef3f8] text-slate-800 text-xs font-semibold rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
+                <button
+                  type="button"
+                  onClick={handleGoogleAuth}
+                  disabled={isLoading}
+                  className="w-full py-3.5 px-6 rounded-2xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-3 active:scale-98 disabled:opacity-60"
+                >
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 text-slate-400 hover:text-slate-600 focus:outline-none"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={collegeName}
-                      onChange={(e) => setCollegeName(e.target.value)}
-                      placeholder="College / Institution"
-                      className="w-full h-11 px-3 bg-[#eef3f8] text-slate-800 text-xs font-semibold rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
                     />
-                    <input
-                      type="text"
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      placeholder="Department (e.g. IT, CSE)"
-                      className="w-full h-11 px-3 bg-[#eef3f8] text-slate-800 text-xs font-semibold rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
                     />
-                  </div>
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  <span>{isLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
+                </button>
 
-                  <div className="pt-2 text-center">
-                    <button
-                      type="submit"
-                      disabled={isLoading}
-                      className="w-full max-w-[200px] py-3 px-8 rounded-full bg-[#1b6b3a] hover:bg-[#14532d] text-white font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-60"
-                    >
-                      {isLoading ? 'Registering...' : 'Register as Student'}
-                    </button>
-                  </div>
-                </form>
-
-                <div className="text-center mt-5 text-xs text-slate-500 font-medium">
+                <div className="text-center pt-2 text-xs text-slate-500 font-medium">
                   <span>Already registered? </span>
                   <button
                     type="button"
@@ -386,7 +349,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
           {/* ---------------------------------------------------- */}
           {/* RIGHT COLUMN: WELCOME GRAPHIC & WAVY ART (Image 2)   */}
           {/* ---------------------------------------------------- */}
-          <div className="relative bg-white flex flex-col items-center justify-center p-8 sm:p-12 overflow-hidden border-t md:border-t-0 md:border-l border-slate-100">
+          <div className="relative bg-white flex flex-col items-center justify-center p-8 sm:p-12 overflow-hidden">
             {/* Top Organic Wave Graphic (Gold & Dark Green) */}
             <div className="absolute top-0 right-0 w-full h-40 pointer-events-none">
               <svg

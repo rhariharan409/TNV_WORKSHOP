@@ -86,3 +86,10 @@ export function parseGoogleDriveLink(url: string): {
   }
   return { type: 'unknown', id: null, embedUrl: null, isValid: false };
 }
+
+export const EMAIL_REGEX = /^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
+
+export function isValidEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  return EMAIL_REGEX.test(email.trim().toLowerCase());
+}

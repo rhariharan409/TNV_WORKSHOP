@@ -3,15 +3,23 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Mail, Phone, MapPin, Send, MessageCircle, CheckCircle2 } from 'lucide-react';
+import { isValidEmail } from '../lib/utils';
 
 export const ContactPage: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!isValidEmail(cleanEmail)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    setError(null);
     setSent(true);
   };
 
@@ -72,6 +80,11 @@ export const ContactPage: React.FC = () => {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  {error && (
+                    <div className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs font-semibold">
+                      {error}
+                    </div>
+                  )}
                   <Input
                     label="Full Name *"
                     placeholder="e.g. Priyadarshini M."
