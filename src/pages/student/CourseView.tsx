@@ -254,7 +254,7 @@ export const CourseView: React.FC = () => {
   // Module N (N > 0) is UNLOCKED only if Module N-1 was completely completed:
   // 1. ALL prerequisite sessions (lessons, videos, assignments) in Module N-1 MUST be completed.
   // 2. The milestone quiz in Module N-1 (if any) MUST be passed with >= passing percentage benchmark.
-  const isModuleUnlocked = (moduleIndex: number): boolean => {
+  const isModuleUnlocked = (moduleIndex: number, currentProg: SessionProgress[] = progressList): boolean => {
     if (moduleIndex === 0) return true;
     const prevModule = modules[moduleIndex - 1];
     if (!prevModule) return true;
@@ -281,7 +281,7 @@ export const CourseView: React.FC = () => {
     // 1. ALL lectures, readings, and assignments in the previous module MUST be completed!
     const allNonQuizCompleted =
       nonQuizSessions.length === 0 ||
-      nonQuizSessions.every((s) => progressList.some((p) => p.session_id === s.id && p.is_completed));
+      nonQuizSessions.every((s) => currentProg.some((p) => p.session_id === s.id && p.is_completed));
 
     if (!allNonQuizCompleted) {
       return false;
@@ -292,7 +292,7 @@ export const CourseView: React.FC = () => {
       const isQuizPassed =
         passedQuizzes.has(prevModule.id) ||
         passedQuizzes.has(prevQuiz.id) ||
-        progressList.some((p) => p.session_id === prevQuiz.id && p.is_completed);
+        currentProg.some((p) => p.session_id === prevQuiz.id && p.is_completed);
       return isQuizPassed;
     }
 
@@ -389,6 +389,50 @@ export const CourseView: React.FC = () => {
     } catch {
       setAssignmentText('');
       setAssignmentSubmitted(false);
+    }
+  };
+
+  const isSessionDone = (sId: string) => progressList.some((p) => p.session_id === sId && p.is_completed);
+
+  // Mark session as completed (does not toggle off if already completed)
+  const handleMarkCompleted = async (sessId: string): Promise<SessionProgress[] | undefined> => {
+    if (!user?.id || !sessId) return;
+    if (isSessionDone(sessId)) return progressList;
+
+    // Optimistically update progressList immediately so progressPercent and module unlocks update right away
+    const optimisticProg: SessionProgress[] = (() => {
+      const existingIdx = progressList.findIndex((p) => p.session_id === sessId);
+      if (existingIdx >= 0) {
+        const next = [...progressList];
+        next[existingIdx] = { ...next[existingIdx], is_completed: true, completed_at: new Date().toISOString() };
+        return next;
+      }
+      return [
+        ...progressList,
+        {
+          id: `prog-${Date.now()}`,
+          student_id: user.id,
+          session_id: sessId,
+          is_completed: true,
+          completed_at: new Date().toISOString(),
+          last_accessed_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        },
+      ];
+    })();
+    setProgressList(optimisticProg);
+
+    try {
+      await dataProvider.updateSessionProgress(user.id, sessId, true);
+      const updated = await dataProvider.getSessionProgress(user.id);
+      if (updated && updated.length > 0) {
+        setProgressList(updated);
+        return updated;
+      }
+      return optimisticProg;
+    } catch (err: any) {
+      console.error('Failed to mark session as completed:', err);
+      return optimisticProg;
     }
   };
 
@@ -587,7 +631,31 @@ export const CourseView: React.FC = () => {
   };
 
   // Next session navigation
-  const handleNavigateNext = () => {
+  const handleNavigateNext = async () => {
+    let currentProg = progressList;
+    if (activeSession) {
+      const isQuiz =
+        activeSession.session_type === 'quiz' ||
+        Boolean(activeSession.description?.includes('"is_quiz":true')) ||
+        activeSession.title?.toLowerCase().includes('assessment') ||
+        activeSession.title?.toLowerCase().includes('quiz') ||
+        quizzes.some((q) => q.session_id === activeSession.id);
+
+      const isAssignment =
+        activeSession.session_type === 'assignment' ||
+        Boolean(activeSession.title && activeSession.title.toLowerCase().includes('assignment')) ||
+        Boolean(activeSession.title && activeSession.title.toLowerCase().includes('project')) ||
+        Boolean(activeSession.title && activeSession.title.toUpperCase().includes('CREATE AN HTML'));
+
+      // Mark video, lesson, document, link sessions completed before advancing
+      if (!isQuiz && !isAssignment) {
+        const res = await handleMarkCompleted(activeSession.id);
+        if (res) {
+          currentProg = res;
+        }
+      }
+    }
+
     const curIdx = activeSessions.findIndex((s) => s.id === activeSession?.id);
     if (curIdx < activeSessions.length - 1) {
       const nextSess = activeSessions[curIdx + 1];
@@ -595,7 +663,7 @@ export const CourseView: React.FC = () => {
     } else {
       // Jump to next module if unlocked
       const nextModIdx = activeModuleIndex + 1;
-      if (nextModIdx < modules.length && isModuleUnlocked(nextModIdx)) {
+      if (nextModIdx < modules.length && isModuleUnlocked(nextModIdx, currentProg)) {
         const nextMod = modules[nextModIdx];
         const nextModSessions = sessionsMap[nextMod.id] || [];
         if (nextModSessions.length > 0) {
@@ -647,8 +715,6 @@ export const CourseView: React.FC = () => {
       </div>
     );
   }
-
-  const isSessionDone = (sId: string) => progressList.some((p) => p.session_id === sId && p.is_completed);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-16">
@@ -1742,6 +1808,49 @@ export const CourseView: React.FC = () => {
                         <Card className="p-8 text-center text-xs text-slate-400 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl">
                           This session has no published learning materials yet. Please proceed to the next session.
                         </Card>
+                      )}
+
+                      {/* Mark as Completed Action for Video/Lesson/Reading/Document Sessions */}
+                      {!hasQuiz && !hasAssignment && (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-xl ${isSessionDone(activeSession.id) ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400' : 'bg-brand-50 dark:bg-brand-950 text-brand-600'}`}>
+                              {isSessionDone(activeSession.id) ? <CheckCircle2 className="w-5 h-5" /> : <PlayCircle className="w-5 h-5" />}
+                            </div>
+                            <div>
+                              <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                                {isSessionDone(activeSession.id) ? 'Session Completed' : 'Finished this session?'}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                {isSessionDone(activeSession.id)
+                                  ? 'Your learning progress has been recorded and saved.'
+                                  : 'Mark as completed to track your progress and unlock future modules.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {isSessionDone(activeSession.id) ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled
+                              className="bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-extrabold cursor-default opacity-100 shrink-0"
+                              leftIcon={<CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
+                            >
+                              Completed
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handleMarkCompleted(activeSession.id)}
+                              className="font-extrabold shadow-sm shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                            >
+                              Mark as Completed
+                            </Button>
+                          )}
+                        </div>
                       )}
 
                       {/* Navigation Footer (Prev / Next) */}

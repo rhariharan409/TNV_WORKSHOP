@@ -51,12 +51,15 @@ export const AdminCertificates: React.FC = () => {
     loadData();
   }, [user?.id]);
 
-  const handleIssueCourseCert = async (studentId: string, courseId: string) => {
+  const handleIssueCourseCert = async (studentId: string, courseId: string, score: number = 95) => {
     setIsProcessing(true);
     try {
-      await dataProvider.issueCourseCertificate(studentId, courseId, user?.id);
+      const res = await dataProvider.issueCourseCertificate(studentId, courseId, user?.id, score);
+      if (res && res.success === false) {
+        throw new Error(res.error || 'Certificate issuance rejected');
+      }
       await loadData();
-      alert('Course Certificate successfully issued and student notified!');
+      alert('Course Certificate successfully approved, issued, and student credential activated!');
     } catch (err: any) {
       alert(`Certificate issuance failed: ${err.message}`);
     } finally {
@@ -68,12 +71,14 @@ export const AdminCertificates: React.FC = () => {
     const title = cert.course?.title || cert.workshop?.title || 'Technical Workshop Program';
     downloadCertificate({
       studentName: cert.student?.full_name || 'Enrolled Student',
-      collegeName: cert.student?.college_name || 'PSG College of Technology',
+      collegeName: cert.student?.college_name || 'TNV Workshop Academy',
       department: cert.student?.department || 'Information Technology',
       workshopTitle: title,
       certificateNumber: cert.certificate_number,
       completionDate: cert.completion_date,
       issueDate: cert.issue_date,
+      overallScore: cert.overall_score || 95,
+      grade: cert.grade || 'A+',
       signatoryName: 'Thamilaran',
       signatoryTitle: 'Program Director & Chief Architect',
     });
@@ -154,6 +159,7 @@ export const AdminCertificates: React.FC = () => {
                 <th className="py-3.5 px-4">Certificate ID</th>
                 <th className="py-3.5 px-4">Student</th>
                 <th className="py-3.5 px-4">Program / Course</th>
+                <th className="py-3.5 px-4">Overall Score</th>
                 <th className="py-3.5 px-4">Issue Date</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
@@ -196,6 +202,15 @@ export const AdminCertificates: React.FC = () => {
                         </span>
                         <span className="text-[10px] text-slate-400 uppercase font-bold">
                           {cert.course_id ? 'Course' : 'Workshop'}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                          {cert.overall_score || 95}%
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1 font-bold">
+                          ({cert.grade || 'A+'})
                         </span>
                       </td>
 

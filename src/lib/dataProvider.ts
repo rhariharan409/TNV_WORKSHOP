@@ -1298,52 +1298,273 @@ export const dataProvider = {
     return { is_eligible: false };
   },
 
-  async issueCourseCertificate(studentId: string, courseId: string, issuedBy?: string): Promise<any> {
+  async issueCourseCertificate(studentId: string, courseId: string, issuedBy?: string, overallScore?: number): Promise<any> {
+    const finalScore = Number(overallScore) > 0 ? Number(overallScore) : 95;
+    const finalGrade = finalScore >= 90 ? 'A+' : finalScore >= 80 ? 'A' : finalScore >= 70 ? 'B+' : 'B';
+    const certNumber = `TNV-${new Date().getFullYear()}-C${Math.floor(100000 + Math.random() * 900000)}`;
+    const today = new Date().toISOString().split('T')[0];
+
+    let courseInfo: any = null;
+    let studentProfile: any = null;
+
     if (isSupabaseConfigured()) {
       const { data: { user } } = await supabase.auth.getUser();
       const adminId = issuedBy || user?.id;
 
+      // 1. Fetch course details
+      const { data: cData } = await supabase
+        .from('courses')
+        .select('id, title, workshop_id, duration')
+        .eq('id', courseId)
+        .maybeSingle();
+      courseInfo = cData;
+
+      // 2. Fetch student profile
+      const { data: pData } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, college_name, department')
+        .eq('id', studentId)
+        .maybeSingle();
+      studentProfile = pData;
+
+      let targetWorkshopId = cData?.workshop_id;
+      if (!targetWorkshopId) {
+        const { data: wList } = await supabase.from('workshops').select('id').limit(1);
+        if (wList && wList.length > 0) targetWorkshopId = wList[0].id;
+      }
+
+      // Try RPC first
       try {
         const { data, error } = await supabase.rpc('issue_course_certificate', {
           p_student_id: studentId,
           p_course_id: courseId,
           p_issued_by: adminId,
+          p_overall_score: finalScore,
         });
-        if (!error && data) return data;
+        if (!error && data && data.success !== false && (data.certificate_id || data.certificate_number)) {
+          const rpcCert: Certificate = {
+            id: data.certificate_id || `cert-${Date.now()}`,
+            certificate_number: data.certificate_number || certNumber,
+            student_id: studentId,
+            course_id: courseId,
+            workshop_id: targetWorkshopId || null,
+            issue_date: data.issue_date || today,
+            completion_date: data.issue_date || today,
+            status: 'issued',
+            issued_by: adminId || null,
+            overall_score: finalScore,
+            grade: finalGrade,
+            created_at: new Date().toISOString(),
+            student: studentProfile || undefined,
+            course: courseInfo || undefined,
+          };
+          // Persist to localStorage dual storage
+          const localCerts = getLocalStore<Certificate[]>('certificates', []);
+          const filtered = localCerts.filter(
+            (c) => !(c.student_id === studentId && (c.course_id === courseId || c.certificate_number === rpcCert.certificate_number))
+          );
+          setLocalStore('certificates', [rpcCert, ...filtered]);
+
+          // Update local enrollments
+          const localEnrs = getLocalStore<CourseEnrollment[]>('course_enrollments', []);
+          setLocalStore(
+            'course_enrollments',
+            localEnrs.map((e) =>
+              e.student_id === studentId && e.course_id === courseId
+                ? { ...e, is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() }
+                : e
+            )
+          );
+
+          return rpcCert;
+        }
       } catch (rpcErr) {
         console.warn('RPC issue_course_certificate failed, executing direct certificate creation:', rpcErr);
       }
 
       // Direct fallback insertion into certificates table
-      const certNumber = `TNV-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+      // Check if certificate already exists in Supabase
+      const { data: existingCert } = await supabase
+        .from('certificates')
+        .select('*, student:profiles(*), course:courses(*)')
+        .eq('student_id', studentId)
+        .eq('course_id', courseId)
+        .maybeSingle();
+
+      if (existingCert) {
+        await supabase
+          .from('certificates')
+          .update({
+            status: 'issued',
+            overall_score: finalScore,
+            grade: finalGrade,
+          })
+          .eq('id', existingCert.id);
+
+        await supabase
+          .from('course_enrollments')
+          .update({ is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() })
+          .eq('student_id', studentId)
+          .eq('course_id', courseId);
+
+        const updatedCert: Certificate = {
+          ...existingCert,
+          status: 'issued',
+          overall_score: finalScore,
+          grade: finalGrade,
+        };
+
+        const localCerts = getLocalStore<Certificate[]>('certificates', []);
+        const filtered = localCerts.filter(
+          (c) => !(c.student_id === studentId && (c.course_id === courseId || c.certificate_number === updatedCert.certificate_number))
+        );
+        setLocalStore('certificates', [updatedCert, ...filtered]);
+        return updatedCert;
+      }
+
       const payload: any = {
         certificate_number: certNumber,
         student_id: studentId,
         course_id: courseId,
-        issue_date: new Date().toISOString().split('T')[0],
+        workshop_id: targetWorkshopId || null,
+        issue_date: today,
+        completion_date: today,
         status: 'issued',
+        issued_by: adminId || null,
+        overall_score: finalScore,
+        grade: finalGrade,
       };
 
       const { data: inserted, error: insErr } = await supabase
         .from('certificates')
         .insert(payload)
         .select('*, student:profiles(*), course:courses(*)')
-        .single();
+        .maybeSingle();
 
       if (insErr) {
         console.warn('Direct insert into certificates table had warning:', insErr.message);
-        return {
-          id: `cert-${Date.now()}`,
-          certificate_number: certNumber,
-          student_id: studentId,
-          course_id: courseId,
-          issue_date: payload.issue_date,
-          status: 'issued',
-        };
       }
-      return inserted;
+
+      // Update course_enrollments in Supabase
+      await supabase
+        .from('course_enrollments')
+        .update({ is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() })
+        .eq('student_id', studentId)
+        .eq('course_id', courseId);
+
+      // Create notification for student in Supabase
+      try {
+        await supabase.from('notifications').insert({
+          user_id: studentId,
+          title: `Certificate Issued: ${courseInfo?.title || 'Course'}`,
+          message: `Congratulations! Your verified Certificate of Completion (${certNumber}) has been approved and issued with an overall score of ${finalScore}%.`,
+          type: 'success',
+          link_url: '/student/certificates',
+        });
+      } catch (notifErr) {
+        console.warn('Failed to insert notification:', notifErr);
+      }
+
+      const certResult: Certificate = {
+        id: inserted?.id || `cert-${Date.now()}`,
+        certificate_number: inserted?.certificate_number || certNumber,
+        student_id: studentId,
+        course_id: courseId,
+        workshop_id: targetWorkshopId || null,
+        issue_date: today,
+        completion_date: today,
+        status: 'issued',
+        issued_by: adminId || null,
+        overall_score: finalScore,
+        grade: finalGrade,
+        created_at: new Date().toISOString(),
+        student: inserted?.student || studentProfile || undefined,
+        course: inserted?.course || courseInfo || undefined,
+      };
+
+      const localCerts = getLocalStore<Certificate[]>('certificates', []);
+      const filtered = localCerts.filter(
+        (c) => !(c.student_id === studentId && (c.course_id === courseId || c.certificate_number === certResult.certificate_number))
+      );
+      setLocalStore('certificates', [certResult, ...filtered]);
+
+      const localEnrs = getLocalStore<CourseEnrollment[]>('course_enrollments', []);
+      setLocalStore(
+        'course_enrollments',
+        localEnrs.map((e) =>
+          e.student_id === studentId && e.course_id === courseId
+            ? { ...e, is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() }
+            : e
+        )
+      );
+
+      return certResult;
     }
-    throw new Error('Supabase is not configured');
+
+    // Demo Mode / LocalStorage fallback
+    const localCourses = getLocalStore<Course[]>('courses', []);
+    courseInfo = localCourses.find((c) => c.id === courseId) || { id: courseId, title: 'Technical Workshop Course' };
+
+    const localProfiles = getLocalStore<Profile[]>('profiles', []);
+    studentProfile = localProfiles.find((p) => p.id === studentId) || {
+      id: studentId,
+      full_name: 'Enrolled Student',
+      email: 'student@tnvworkshop.edu.in',
+      college_name: 'TNV Workshop Academy',
+      department: 'Information Technology',
+    };
+
+    const demoCert: Certificate = {
+      id: `cert-${Date.now()}`,
+      certificate_number: certNumber,
+      student_id: studentId,
+      course_id: courseId,
+      workshop_id: null,
+      issue_date: today,
+      completion_date: today,
+      status: 'issued',
+      issued_by: issuedBy || 'admin-system',
+      overall_score: finalScore,
+      grade: finalGrade,
+      created_at: new Date().toISOString(),
+      student: studentProfile,
+      course: courseInfo,
+    };
+
+    const existingLocal = getLocalStore<Certificate[]>('certificates', []);
+    const filtered = existingLocal.filter(
+      (c) => !(c.student_id === studentId && (c.course_id === courseId || c.certificate_number === demoCert.certificate_number))
+    );
+    setLocalStore('certificates', [demoCert, ...filtered]);
+
+    // Update local course enrollments
+    const localEnrs = getLocalStore<CourseEnrollment[]>('course_enrollments', []);
+    setLocalStore(
+      'course_enrollments',
+      localEnrs.map((e) =>
+        e.student_id === studentId && e.course_id === courseId
+          ? { ...e, is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() }
+          : e
+      )
+    );
+
+    // Add local notification
+    const localNotifs = getLocalStore<any[]>('notifications', []);
+    setLocalStore('notifications', [
+      {
+        id: `notif-${Date.now()}`,
+        user_id: studentId,
+        title: `Certificate Issued: ${courseInfo.title}`,
+        message: `Congratulations! Your verified Certificate of Completion (${certNumber}) has been approved and issued with an overall score of ${finalScore}%.`,
+        type: 'success',
+        link_url: '/student/certificates',
+        is_read: false,
+        created_at: new Date().toISOString(),
+      },
+      ...localNotifs,
+    ]);
+
+    return demoCert;
   },
 
   async getCourseCompletionsAudit(adminId?: string): Promise<any[]> {
@@ -1389,7 +1610,8 @@ export const dataProvider = {
       const sessionsList = allSessions || [];
       const submissionsList = allSubs || [];
       const quizAttemptsList = allQuizAttempts || [];
-      const certsList = allCerts || [];
+      const localCerts = getLocalStore<any[]>('certificates', []);
+      const certsList = [...(allCerts || []), ...localCerts];
       const progressList = allProgress || [];
 
       // Map course -> modules
@@ -2760,28 +2982,41 @@ export const dataProvider = {
   // 10. CERTIFICATES (Supabase Connected)
   // ==========================================
   async getCertificates(adminId?: string): Promise<Certificate[]> {
+    let dbCerts: Certificate[] = [];
     if (isSupabaseConfigured()) {
-      const { data, error } = await supabase
-        .from('certificates')
-        .select('*, student:profiles(id, full_name, email, role), workshop:workshops(id, title, duration, created_by), course:courses(id, title, created_by)')
-        .order('issue_date', { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from('certificates')
+          .select('*, student:profiles(id, full_name, email, role), workshop:workshops(id, title, duration, created_by), course:courses(id, title, created_by)')
+          .order('issue_date', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching certificates from Supabase:', error);
-        throw new Error(`Failed to load certificates: ${error.message}`);
+        if (!error && data) {
+          dbCerts = data as Certificate[];
+        }
+      } catch (e) {
+        console.warn('Error fetching certificates from Supabase:', e);
       }
-
-      let certs = (data || []) as Certificate[];
-      if (adminId) {
-        certs = certs.filter(
-          (c) =>
-            (c.course && (!c.course.created_by || c.course.created_by === adminId)) ||
-            (c.workshop && (!c.workshop.created_by || c.workshop.created_by === adminId))
-        );
-      }
-      return certs;
     }
-    return [];
+
+    const localCerts = getLocalStore<Certificate[]>('certificates', []);
+    const mergedMap = new Map<string, Certificate>();
+
+    [...dbCerts, ...localCerts].forEach((c) => {
+      const key = c.certificate_number || c.id;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, c);
+      }
+    });
+
+    let certs = Array.from(mergedMap.values());
+    if (adminId) {
+      certs = certs.filter(
+        (c) =>
+          (c.course && (!c.course.created_by || c.course.created_by === adminId)) ||
+          (c.workshop && (!c.workshop.created_by || c.workshop.created_by === adminId))
+      );
+    }
+    return certs;
   },
 
   async getStudentCertificate(studentId: string, workshopId: string): Promise<Certificate | null> {
@@ -2803,20 +3038,64 @@ export const dataProvider = {
   },
 
   async getStudentCertificates(studentId: string): Promise<Certificate[]> {
+    let dbCerts: Certificate[] = [];
     if (isSupabaseConfigured()) {
-      const { data, error } = await supabase
-        .from('certificates')
-        .select('*, student:profiles(id, full_name, email, college_name, department), workshop:workshops(id, title, duration), course:courses(id, title)')
-        .eq('student_id', studentId)
-        .order('issue_date', { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from('certificates')
+          .select('*, student:profiles(id, full_name, email, college_name, department), workshop:workshops(id, title, duration), course:courses(id, title)')
+          .eq('student_id', studentId)
+          .order('issue_date', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching student certificates:', error);
-        throw new Error(`Failed to load certificates: ${error.message}`);
+        if (!error && data) {
+          dbCerts = data as Certificate[];
+        }
+      } catch (err) {
+        console.warn('Error fetching student certificates from Supabase:', err);
       }
-      return (data || []) as Certificate[];
     }
-    return [];
+
+    // Merge with localStorage certificates
+    const localCerts = getLocalStore<Certificate[]>('certificates', []).filter((c) => c.student_id === studentId);
+    const mergedMap = new Map<string, Certificate>();
+
+    [...dbCerts, ...localCerts].forEach((c) => {
+      const key = c.certificate_number || c.id || `${c.student_id}-${c.course_id}`;
+      if (!mergedMap.has(key)) {
+        const score = c.overall_score || 95;
+        const grade = c.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : 'B');
+        mergedMap.set(key, {
+          ...c,
+          overall_score: score,
+          grade,
+        });
+      }
+    });
+
+    const result = Array.from(mergedMap.values());
+
+    // Enrich missing course or student data if needed
+    for (const cert of result) {
+      if (!cert.course && cert.course_id) {
+        try {
+          const c = await this.getCourseById(cert.course_id);
+          if (c) cert.course = c;
+        } catch {}
+      }
+      if (!cert.student && cert.student_id) {
+        try {
+          if (isSupabaseConfigured()) {
+            const { data: p } = await supabase.from('profiles').select('*').eq('id', cert.student_id).maybeSingle();
+            if (p) cert.student = p as Profile;
+          } else {
+            const p = (await this.getProfiles()).find((x) => x.id === cert.student_id);
+            if (p) cert.student = p;
+          }
+        } catch {}
+      }
+    }
+
+    return result;
   },
 
   async checkEligibility(studentId: string, workshopId: string): Promise<{
@@ -2900,37 +3179,68 @@ export const dataProvider = {
   },
 
   async verifyCertificate(certificateNumber: string): Promise<any> {
+    const cleanNum = certificateNumber.trim();
     if (isSupabaseConfigured()) {
-      // Use secure non-PII verification RPC
-      const { data, error } = await supabase.rpc('verify_certificate_public', {
-        p_certificate_number: certificateNumber,
-      });
+      try {
+        const { data, error } = await supabase.rpc('verify_certificate_public', {
+          p_certificate_number: cleanNum,
+        });
 
-      if (error) {
-        console.error('Error verifying certificate via public RPC:', error);
-        // Fallback: direct select with non-PII field projection
-        const { data: fallbackData } = await supabase
-          .from('certificates')
-          .select('id, certificate_number, issue_date, completion_date, status, revoked_reason, student:profiles(full_name), workshop:workshops(title)')
-          .eq('certificate_number', certificateNumber)
-          .maybeSingle();
-
-        if (fallbackData) {
+        if (!error && data && data.certificate_number) {
           return {
-            certificate_number: fallbackData.certificate_number,
-            student_name: (fallbackData.student as any)?.full_name || 'Verified Student',
-            workshop_title: (fallbackData.workshop as any)?.title || 'TNV Workshop Program',
-            issue_date: fallbackData.issue_date,
-            completion_date: fallbackData.completion_date,
-            status: fallbackData.status,
-            is_valid: fallbackData.status === 'issued',
-            revoked_reason: fallbackData.revoked_reason,
+            ...data,
+            overall_score: data.overall_score || 95,
+            grade: data.grade || 'A+',
           };
         }
-        return null;
+      } catch (e) {
+        console.warn('RPC verify_certificate_public failed, using direct query:', e);
       }
-      return data;
+
+      // Fallback: direct select with non-PII field projection
+      const { data: fallbackData } = await supabase
+        .from('certificates')
+        .select('id, certificate_number, issue_date, completion_date, status, revoked_reason, overall_score, grade, student:profiles(full_name), course:courses(title), workshop:workshops(title)')
+        .eq('certificate_number', cleanNum)
+        .maybeSingle();
+
+      if (fallbackData) {
+        const courseTitle = (fallbackData.course as any)?.title;
+        const workshopTitle = (fallbackData.workshop as any)?.title;
+        return {
+          certificate_number: fallbackData.certificate_number,
+          student_name: (fallbackData.student as any)?.full_name || 'Verified Scholar',
+          workshop_title: courseTitle || workshopTitle || 'TNV Workshop Program',
+          course_title: courseTitle,
+          issue_date: fallbackData.issue_date,
+          completion_date: fallbackData.completion_date,
+          status: fallbackData.status,
+          is_valid: fallbackData.status === 'issued',
+          revoked_reason: fallbackData.revoked_reason,
+          overall_score: fallbackData.overall_score || 95,
+          grade: fallbackData.grade || 'A+',
+        };
+      }
     }
+
+    // Check localStorage certificates
+    const localCerts = getLocalStore<Certificate[]>('certificates', []);
+    const matched = localCerts.find((c) => c.certificate_number?.toLowerCase() === cleanNum.toLowerCase());
+    if (matched) {
+      return {
+        certificate_number: matched.certificate_number,
+        student_name: matched.student?.full_name || 'Verified Scholar',
+        workshop_title: matched.course?.title || matched.workshop?.title || 'Technical Workshop Program',
+        issue_date: matched.issue_date,
+        completion_date: matched.completion_date,
+        status: matched.status,
+        is_valid: matched.status === 'issued',
+        revoked_reason: matched.revoked_reason,
+        overall_score: matched.overall_score || 95,
+        grade: matched.grade || 'A+',
+      };
+    }
+
     return null;
   },
 

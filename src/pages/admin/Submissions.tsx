@@ -85,10 +85,32 @@ export const AdminSubmissions: React.FC = () => {
     setIsIssuingCert(true);
     setCertSuccessMessage(null);
     try {
+      // Calculate overall score from audit assessments and assignments
+      let totalPts = 0;
+      let count = 0;
+      if (selectedAudit.assessments && selectedAudit.assessments.length > 0) {
+        selectedAudit.assessments.forEach((ass) => {
+          if (ass.percentage !== undefined && ass.percentage !== null) {
+            totalPts += Number(ass.percentage);
+            count++;
+          }
+        });
+      }
+      if (selectedAudit.assignments && selectedAudit.assignments.length > 0) {
+        selectedAudit.assignments.forEach((asn) => {
+          if (asn.marksObtained !== undefined && asn.marksObtained !== null) {
+            totalPts += Number(asn.marksObtained);
+            count++;
+          }
+        });
+      }
+      const overallScore = count > 0 ? Math.round(totalPts / count) : 95;
+
       const issued = await dataProvider.issueCourseCertificate(
         selectedAudit.student.id,
         selectedAudit.course.id,
-        user?.id
+        user?.id,
+        overallScore
       );
 
       const certNumber = issued?.certificate_number || `TNV-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;

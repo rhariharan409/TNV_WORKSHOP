@@ -441,6 +441,8 @@ export interface Certificate {
   status: 'issued' | 'revoked';
   revoked_reason?: string | null;
   issued_by?: string | null;
+  overall_score?: number | null;
+  grade?: string | null;
   created_at: string;
   student?: Profile;
   workshop?: Workshop;

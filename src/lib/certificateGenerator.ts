@@ -11,6 +11,8 @@ export interface CertificateData {
   issueDate: string;
   signatoryName?: string;
   signatoryTitle?: string;
+  overallScore?: number | string;
+  grade?: string;
 }
 
 export function generateCertificatePDF(data: CertificateData): jsPDF {
@@ -23,158 +25,250 @@ export function generateCertificatePDF(data: CertificateData): jsPDF {
 
   const width = 297;
   const height = 210;
+  const score = data.overallScore || 95;
+  const grade = data.grade || (Number(score) >= 90 ? 'A+' : Number(score) >= 80 ? 'A' : 'B+');
 
-  // Background subtle cream
-  doc.setFillColor(252, 253, 255);
+  // Background pure crisp white
+  doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, width, height, "F");
 
-  // Outer Decorative Navy Border
-  doc.setDrawColor(15, 23, 42); // slate-900 / navy
-  doc.setLineWidth(3);
-  doc.rect(10, 10, width - 20, height - 20);
+  // ==========================================
+  // TOP-LEFT CORNER ACCENTS (TNV Green & Yellow)
+  // ==========================================
+  // Primary Forest Green Wave (#15803d)
+  doc.setFillColor(21, 128, 61);
+  doc.setDrawColor(21, 128, 61);
+  doc.lines(
+    [
+      [55, 0],
+      [-55, 38],
+    ],
+    0,
+    0,
+    [1, 1],
+    "F"
+  );
+  // Secondary Golden Yellow Accent Curve (#eab308)
+  doc.setFillColor(234, 179, 8);
+  doc.setDrawColor(234, 179, 8);
+  doc.lines(
+    [
+      [64, 0],
+      [-64, 46],
+      [9, -8],
+    ],
+    0,
+    0,
+    [1, 1],
+    "F"
+  );
 
-  // Inner Gold Border
-  doc.setDrawColor(217, 119, 6); // Amber / Gold
-  doc.setLineWidth(0.8);
-  doc.rect(13, 13, width - 26, height - 26);
+  // ==========================================
+  // BOTTOM-RIGHT CORNER ACCENTS (TNV Yellow & Green)
+  // ==========================================
+  // Secondary Golden Yellow Accent (#eab308)
+  doc.setFillColor(234, 179, 8);
+  doc.setDrawColor(234, 179, 8);
+  doc.lines(
+    [
+      [-64, 0],
+      [64, -46],
+      [-9, 8],
+    ],
+    width,
+    height,
+    [1, 1],
+    "F"
+  );
+  // Primary Forest Green Wave (#15803d)
+  doc.setFillColor(21, 128, 61);
+  doc.setDrawColor(21, 128, 61);
+  doc.lines(
+    [
+      [-55, 0],
+      [55, -38],
+    ],
+    width,
+    height,
+    [1, 1],
+    "F"
+  );
 
-  // Corner Accents
-  const cornerSize = 12;
-  doc.setDrawColor(217, 119, 6);
-  doc.setFillColor(217, 119, 6);
-  
-  // Top-left corner ornament
-  doc.triangle(13, 13, 13 + cornerSize, 13, 13, 13 + cornerSize, "FD");
-  // Top-right corner ornament
-  doc.triangle(width - 13, 13, width - 13 - cornerSize, 13, width - 13, 13 + cornerSize, "FD");
-  // Bottom-left corner ornament
-  doc.triangle(13, height - 13, 13 + cornerSize, height - 13, 13, height - 13 - cornerSize, "FD");
-  // Bottom-right corner ornament
-  doc.triangle(width - 13, height - 13, width - 13 - cornerSize, height - 13, width - 13, height - 13 - cornerSize, "FD");
+  // Outer Border
+  doc.setDrawColor(226, 232, 240); // slate-200
+  doc.setLineWidth(1.2);
+  doc.roundedRect(8, 8, width - 16, height - 16, 4, 4, "S");
 
-  // Header Organization Title
+  // Inner Subtle Decorative Border
+  doc.setDrawColor(21, 128, 61);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(11, 11, width - 22, height - 22, 3, 3, "S");
+
+  // ==========================================
+  // TOP TNV EMBLEM / TN SYMBOL
+  // ==========================================
+  const emblemX = width / 2;
+  const emblemY = 25;
+
+  // Outer green ring
+  doc.setDrawColor(21, 128, 61);
+  doc.setFillColor(21, 128, 61);
+  doc.circle(emblemX, emblemY, 11, "FD");
+
+  // Gold middle ring
+  doc.setDrawColor(234, 179, 8);
+  doc.setFillColor(254, 240, 138); // amber-100
+  doc.circle(emblemX, emblemY, 9, "FD");
+
+  // Center crest text
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.setTextColor(15, 23, 42);
-  doc.text("TNV WORKSHOP", width / 2, 34, { align: "center" });
+  doc.setFontSize(6);
+  doc.setTextColor(21, 128, 61);
+  doc.text("TAMIL NADU", emblemX, emblemY - 2, { align: "center" });
+  doc.setFontSize(7.5);
+  doc.text("TNV", emblemX, emblemY + 2, { align: "center" });
+  doc.setFontSize(5);
+  doc.text("VOLUNTEERS", emblemX, emblemY + 5.5, { align: "center" });
 
-  // Subtitle
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  // ==========================================
+  // HEADER TITLES
+  // ==========================================
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(21, 128, 61); // TNV Brand Green
+  doc.text("TNV WORKSHOP ACADEMY", width / 2, 43, { align: "center" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
-  doc.text("ACADEMY OF ADVANCED SOFTWARE & SYSTEMS ENGINEERING", width / 2, 41, { align: "center" });
+  doc.text("TAMIL NADU VOLUNTEERS  •  CENTRE OF SYSTEMS & SOFTWARE EXCELLENCE", width / 2, 48.5, { align: "center" });
 
-  // Ribbon / Title Banner
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(217, 119, 6);
-  doc.text("CERTIFICATE OF INDUSTRY EXCELLENCE", width / 2, 56, { align: "center" });
+  doc.setFontSize(15);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text("CERTIFICATE OF INDUSTRY EXCELLENCE & COMPLETION", width / 2, 59, { align: "center" });
 
-  // "This is to certify that"
+  // "This is proudly presented to"
   doc.setFont("times", "italic");
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setTextColor(71, 85, 105);
-  doc.text("This is proudly presented to", width / 2, 68, { align: "center" });
+  doc.text("This is proudly presented to", width / 2, 69, { align: "center" });
 
   // Student Full Name
   doc.setFont("times", "bold");
-  doc.setFontSize(26);
+  doc.setFontSize(24);
   doc.setTextColor(15, 23, 42);
-  doc.text(data.studentName.toUpperCase(), width / 2, 83, { align: "center" });
+  doc.text(data.studentName.toUpperCase(), width / 2, 82, { align: "center" });
 
-  // Line below name
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.5);
-  doc.line(width / 2 - 70, 87, width / 2 + 70, 87);
+  // Elegant divider line below name
+  doc.setDrawColor(21, 128, 61);
+  doc.setLineWidth(0.6);
+  doc.line(width / 2 - 60, 85.5, width / 2 + 60, 85.5);
 
   // College / Affiliation
-  if (data.collegeName) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(100, 116, 139);
-    const deptInfo = data.department ? `${data.department}, ` : "";
-    doc.text(`of ${deptInfo}${data.collegeName}`, width / 2, 95, { align: "center" });
-  }
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  const collegeInfo = data.collegeName || "TNV Workshop Academy of Technology";
+  const deptInfo = data.department ? `${data.department}, ` : "";
+  doc.text(`of ${deptInfo}${collegeInfo}`, width / 2, 92.5, { align: "center" });
 
   // Completion statement
   doc.setFont("times", "normal");
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setTextColor(51, 65, 85);
   doc.text(
-    "for successfully completing the rigorous theoretical curriculum, hands-on modules,",
+    "for successfully completing 100% of the rigorous theoretical curriculum, practical coursework,",
     width / 2,
-    108,
+    103,
     { align: "center" }
   );
   doc.text(
-    "technical assignments, comprehensive examinations, and practical coursework in",
+    "technical assignments, laboratory milestones, and comprehensive evaluations in",
     width / 2,
-    115,
+    109.5,
     { align: "center" }
   );
 
-  // Workshop Title
+  // Course Title
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.setTextColor(30, 64, 175); // Brand blue
-  doc.text(data.workshopTitle, width / 2, 126, { align: "center" });
+  doc.setTextColor(21, 128, 61); // Brand Green
+  doc.text(data.workshopTitle, width / 2, 120, { align: "center" });
+
+  // ==========================================
+  // OVERALL SCORE & PERFORMANCE BANNER
+  // ==========================================
+  doc.setDrawColor(21, 128, 61);
+  doc.setFillColor(240, 253, 244); // light green bg
+  doc.roundedRect(width / 2 - 58, 127.5, 116, 9.5, 2.5, 2.5, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(21, 128, 61);
+  doc.text(`Course Completion: 100%   •   Overall Score: ${score}%   •   Grade: ${grade}`, width / 2, 134, { align: "center" });
 
   // Gold Seal / Emblem Representation (center bottom)
-  doc.setDrawColor(217, 119, 6);
+  doc.setDrawColor(234, 179, 8);
   doc.setFillColor(254, 243, 199);
-  doc.circle(width / 2, 152, 12, "FD");
+  doc.circle(width / 2, 154, 10, "FD");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setTextColor(180, 83, 9);
-  doc.text("VERIFIED", width / 2, 150, { align: "center" });
-  doc.text("TNV", width / 2, 154, { align: "center" });
-  doc.text("OFFICIAL", width / 2, 157, { align: "center" });
+  doc.text("VERIFIED", width / 2, 152.5, { align: "center" });
+  doc.text("TNV ACADEMY", width / 2, 155.5, { align: "center" });
+  doc.text("OFFICIAL", width / 2, 158.5, { align: "center" });
 
-  // Signature Block Left - Director
+  // ==========================================
+  // SIGNATURE BLOCKS
+  // ==========================================
+  // Left: Program Director (Thamilaran)
   doc.setDrawColor(71, 85, 105);
   doc.setLineWidth(0.4);
-  doc.line(35, 176, 95, 176);
+  doc.line(35, 174, 95, 174);
 
   doc.setFont("times", "bolditalic");
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
-  doc.text("Thamilaran", 65, 173, { align: "center" });
+  doc.text("Thamilaran", 65, 171, { align: "center" });
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(data.signatoryName || "Thamilaran", 65, 182, { align: "center" });
+  doc.text(data.signatoryName || "Thamilaran", 65, 179, { align: "center" });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(data.signatoryTitle || "Program Director & Chief Architect", 65, 187, { align: "center" });
+  doc.text(data.signatoryTitle || "Program Director & Chief Architect", 65, 183.5, { align: "center" });
 
-  // Signature Block Right - Academic Council
-  doc.line(width - 95, 176, width - 35, 176);
+  // Right: Academic Council / Assessor
+  doc.line(width - 95, 174, width - 35, 174);
 
   doc.setFont("times", "bolditalic");
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
-  doc.text("Academic Evaluation Board", width - 65, 173, { align: "center" });
+  doc.text("Academic Evaluation Board", width - 65, 171, { align: "center" });
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  doc.text("Lead Technical Assessor", width - 65, 182, { align: "center" });
+  doc.text("Technical Assessment Council", width - 65, 179, { align: "center" });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text("TNV Academic Council", width - 65, 187, { align: "center" });
+  doc.text("Tamil Nadu Volunteers Certification Authority", width - 65, 183.5, { align: "center" });
 
-  // Footer Metadata: Certificate ID & Dates
+  // ==========================================
+  // FOOTER METADATA
+  // ==========================================
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(`Certificate ID: ${data.certificateNumber}`, 25, height - 16);
-  doc.text(`Issued: ${data.issueDate}`, width / 2, height - 16, { align: "center" });
-  doc.text(`Verify at: /verify-certificate/${data.certificateNumber}`, width - 25, height - 16, { align: "right" });
+  doc.text(`Certificate ID: ${data.certificateNumber}`, 25, height - 15);
+  doc.text(`Issued: ${data.issueDate}`, width / 2, height - 15, { align: "center" });
+  doc.text(`Verification Registry: /verify-certificate/${data.certificateNumber}`, width - 25, height - 15, { align: "right" });
 
   return doc;
 }

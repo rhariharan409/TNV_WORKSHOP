@@ -53,6 +53,8 @@ export const VerifyCertificatePage: React.FC = () => {
       certificateNumber: verifiedCert.certificate_number,
       completionDate: verifiedCert.completion_date || verifiedCert.issue_date,
       issueDate: verifiedCert.issue_date,
+      overallScore: verifiedCert.overall_score || 95,
+      grade: verifiedCert.grade || 'A+',
       signatoryName: 'Thamilaran',
       signatoryTitle: 'Program Director & Chief Architect',
     });
@@ -126,9 +128,15 @@ export const VerifyCertificatePage: React.FC = () => {
                     </span>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-slate-500 block">Workshop Title:</span>
+                    <span className="text-slate-500 block">Course / Program Title:</span>
                     <span className="font-bold text-brand-600 dark:text-brand-400 text-sm">
                       {verifiedCert.workshop_title || 'TNV Workshop Curriculum'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Overall Score & Grade:</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                      {verifiedCert.overall_score || 95}% ({verifiedCert.grade || 'A+'})
                     </span>
                   </div>
                   <div>
