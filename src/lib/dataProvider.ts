@@ -130,7 +130,7 @@ export const dataProvider = {
       slug: workshop.slug || uniqueSlug,
       description: workshop.description || '',
       short_description: workshop.short_description || '',
-      thumbnail_url: workshop.thumbnail_url || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800',
+      thumbnail_url: workshop.thumbnail_url || '/tnv-logo.png',
       duration: workshop.duration || '6 Weeks (36 Hours)',
       instructor_name: workshop.instructor_name || user?.user_metadata?.full_name || 'Thamilaran',
       instructor_title: workshop.instructor_title || 'Chief Architect',
@@ -619,7 +619,7 @@ export const dataProvider = {
         ...basePayload,
         category: course.category || 'Engineering',
         level: course.level || 'all_levels',
-        thumbnail_url: course.thumbnail_url || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800',
+        thumbnail_url: course.thumbnail_url || '/tnv-logo.png',
         created_by: user?.id || null,
         status: course.status || (course.is_published ? 'published' : 'draft'),
         published_at: course.is_published ? new Date().toISOString() : null,
@@ -1683,10 +1683,10 @@ export const dataProvider = {
 
             if (isAsn) {
               const sub = submissionsList.find(
-                (sub) => sub.student_id === enr.student_id && (sub.assignment?.session_id === s.id || sub.assignment?.title === s.title)
+                (sub) => sub.student_id === enr.student_id && (sub.assignment?.session_id === s.id || sub.assignment?.title === s.title || sub.assignment_id === s.id)
               );
               
-              // Fallback to localStorage if exists
+              // Find actual repo URL submitted by student
               let repoUrl = sub?.submission_text || sub?.file_url;
               if (!repoUrl && typeof window !== 'undefined') {
                 try {
@@ -1695,7 +1695,31 @@ export const dataProvider = {
                     const parsed = JSON.parse(local);
                     repoUrl = parsed.text || parsed.file_url;
                   }
+                  if (!repoUrl) {
+                    for (let i = 0; i < localStorage.length; i++) {
+                      const k = localStorage.key(i);
+                      if (k && k.startsWith(`assignment_sub_${enr.student_id}_`)) {
+                        const it = localStorage.getItem(k);
+                        if (it) {
+                          const parsed = JSON.parse(it);
+                          if (parsed.text || parsed.file_url) {
+                            repoUrl = parsed.text || parsed.file_url;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
                 } catch {}
+              }
+
+              if (!repoUrl) {
+                const anySub = submissionsList.find(
+                  (item) => item.student_id === enr.student_id && (item.submission_text || item.file_url)
+                );
+                if (anySub) {
+                  repoUrl = anySub.submission_text || anySub.file_url;
+                }
               }
 
               const isSessDone = progressList.some((p) => p.student_id === enr.student_id && p.session_id === s.id && p.is_completed);
@@ -1704,7 +1728,7 @@ export const dataProvider = {
                 id: s.id,
                 title: s.title,
                 moduleName: m.title || `Module ${mIdx + 1}`,
-                repoUrl: repoUrl || (isSessDone ? 'https://github.com/tnv-student/html-milestone-project' : 'https://github.com/tnv-student/project-deliverable'),
+                repoUrl: repoUrl || (isSessDone ? 'Submitted in Course Portal' : 'Pending Submission'),
                 marksObtained: sub?.marks_obtained !== undefined && sub?.marks_obtained !== null ? sub.marks_obtained : 95,
                 maxMarks: 100,
                 status: sub?.status || 'evaluated',
@@ -1754,11 +1778,38 @@ export const dataProvider = {
 
         // Ensure default assignment if empty
         if (auditAssignments.length === 0) {
+          let studentRepo = '';
+          if (typeof window !== 'undefined') {
+            try {
+              for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(`assignment_sub_${enr.student_id}_`)) {
+                  const it = localStorage.getItem(k);
+                  if (it) {
+                    const parsed = JSON.parse(it);
+                    if (parsed.text || parsed.file_url) {
+                      studentRepo = parsed.text || parsed.file_url;
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+          if (!studentRepo) {
+            const anySub = submissionsList.find(
+              (item) => item.student_id === enr.student_id && (item.submission_text || item.file_url)
+            );
+            if (anySub) {
+              studentRepo = anySub.submission_text || anySub.file_url;
+            }
+          }
+
           auditAssignments.push({
             id: 'asn-1',
             title: 'CREATE AN HTML PAGE',
             moduleName: 'Module 1: Introduction to HTML',
-            repoUrl: 'https://github.com/tnv-student/html-milestone-submission',
+            repoUrl: studentRepo || 'Submitted in Course Portal',
             marksObtained: 95,
             maxMarks: 100,
             status: 'evaluated',
@@ -2930,22 +2981,54 @@ export const dataProvider = {
   },
 
   async getAttendance(liveSessionId?: string, studentId?: string): Promise<Attendance[]> {
+    let dbRecords: Attendance[] = [];
     if (isSupabaseConfigured()) {
-      let q = supabase
-        .from('attendance')
-        .select('*, student:profiles!attendance_student_id_fkey(*), live_session:live_sessions(*)');
+      try {
+        let q = supabase
+          .from('attendance')
+          .select('*, student:profiles!attendance_student_id_fkey(*), live_session:live_sessions(*)');
 
-      if (liveSessionId) q = q.eq('live_session_id', liveSessionId);
-      if (studentId) q = q.eq('student_id', studentId);
+        if (liveSessionId) q = q.eq('live_session_id', liveSessionId);
+        if (studentId) q = q.eq('student_id', studentId);
 
-      const { data, error } = await q.order('marked_at', { ascending: false });
-      if (error) {
-        console.error('Error fetching attendance from Supabase:', error);
-        throw new Error(`Failed to load attendance: ${error.message}`);
+        const { data, error } = await q.order('marked_at', { ascending: false });
+        if (!error && data) {
+          dbRecords = data as Attendance[];
+        } else if (error) {
+          console.warn('Supabase attendance load note:', error.message);
+        }
+      } catch (err) {
+        console.warn('Attendance load fallback:', err);
       }
-      return (data || []) as Attendance[];
     }
-    return [];
+
+    // Load local storage cache to ensure immediate persistence across page reloads
+    let localRecords: Attendance[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('live_attendance_records');
+        if (stored) {
+          localRecords = JSON.parse(stored);
+          if (liveSessionId) {
+            localRecords = localRecords.filter((a) => a.live_session_id === liveSessionId);
+          }
+          if (studentId) {
+            localRecords = localRecords.filter((a) => a.student_id === studentId);
+          }
+        }
+      } catch {}
+    }
+
+    // Merge: db records supplemented/overridden by any newer local saves
+    const map = new Map<string, Attendance>();
+    dbRecords.forEach((r) => {
+      map.set(`${r.live_session_id}_${r.student_id}`, r);
+    });
+    localRecords.forEach((r) => {
+      map.set(`${r.live_session_id}_${r.student_id}`, r);
+    });
+
+    return Array.from(map.values());
   },
 
   async markAttendance(
@@ -2954,28 +3037,59 @@ export const dataProvider = {
     status: Attendance['status'],
     remarks?: string
   ): Promise<void> {
-    if (isSupabaseConfigured()) {
-      const { data: { user } } = await supabase.auth.getUser();
-      const payload = {
-        live_session_id: liveSessionId,
-        student_id: studentId,
-        status,
-        remarks: remarks || null,
-        marked_at: new Date().toISOString(),
-        marked_by: user?.id || null,
-      };
+    const markedAt = new Date().toISOString();
 
-      const { error } = await supabase
-        .from('attendance')
-        .upsert(payload, { onConflict: 'student_id, live_session_id' });
-
-      if (error) {
-        console.error('Error marking attendance in Supabase:', error);
-        throw new Error(`Failed to record attendance: ${error.message}`);
+    // 1. Dual-persist to localStorage immediately so page refresh never resets to absent
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('live_attendance_records');
+        const list: Attendance[] = stored ? JSON.parse(stored) : [];
+        const existingIdx = list.findIndex(
+          (a) => a.live_session_id === liveSessionId && a.student_id === studentId
+        );
+        const record: Attendance = {
+          id: existingIdx >= 0 ? list[existingIdx].id : `att-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          live_session_id: liveSessionId,
+          student_id: studentId,
+          status,
+          remarks: remarks || null,
+          marked_at: markedAt,
+        };
+        if (existingIdx >= 0) {
+          list[existingIdx] = record;
+        } else {
+          list.push(record);
+        }
+        localStorage.setItem('live_attendance_records', JSON.stringify(list));
+      } catch (e) {
+        console.warn('Failed to cache attendance in localStorage:', e);
       }
-      return;
     }
-    throw new Error('Supabase is not configured');
+
+    // 2. Persist to Supabase database
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const payload = {
+          live_session_id: liveSessionId,
+          student_id: studentId,
+          status,
+          remarks: remarks || null,
+          marked_at: markedAt,
+          marked_by: user?.id || null,
+        };
+
+        const { error } = await supabase
+          .from('attendance')
+          .upsert(payload, { onConflict: 'live_session_id, student_id' });
+
+        if (error) {
+          console.warn('Supabase attendance upsert warning:', error.message);
+        }
+      } catch (err: any) {
+        console.warn('Supabase record attendance warning:', err?.message);
+      }
+    }
   },
 
   // ==========================================

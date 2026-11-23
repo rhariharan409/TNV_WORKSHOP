@@ -59,7 +59,7 @@ export const AdminCourseCreate: React.FC = () => {
   const [level, setLevel] = useState('intermediate');
   const [duration, setDuration] = useState('6 Weeks (36 Hours)');
   const [instructorName, setInstructorName] = useState(user?.full_name || 'Thamilaran');
-  const [thumbnailUrl, setThumbnailUrl] = useState('https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [workshopId, setWorkshopId] = useState<string>('');
 
   // Step 2: Content Structure (Modules & Sessions)
@@ -220,7 +220,7 @@ export const AdminCourseCreate: React.FC = () => {
         level,
         duration,
         instructor_name: instructorName,
-        thumbnail_url: thumbnailUrl,
+        thumbnail_url: thumbnailUrl.trim() || '/tnv-logo.png',
         workshop_id: workshopId || null,
         created_by: user?.id,
         is_published: false,
@@ -267,7 +267,7 @@ export const AdminCourseCreate: React.FC = () => {
         level,
         duration,
         instructor_name: instructorName,
-        thumbnail_url: thumbnailUrl,
+        thumbnail_url: thumbnailUrl.trim() || '/tnv-logo.png',
         workshop_id: workshopId || null,
         created_by: user?.id,
         is_published: true,
@@ -1857,9 +1857,9 @@ export const AdminCourseCreate: React.FC = () => {
           {/* Course Summary Card */}
           <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-5 items-start">
             <img
-              src={thumbnailUrl || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800'}
+              src={thumbnailUrl || '/tnv-logo.png'}
               alt={title}
-              className="w-full sm:w-48 h-32 rounded-xl object-cover shrink-0"
+              className="w-full sm:w-48 h-32 rounded-xl object-contain shrink-0 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
             />
             <div className="space-y-2">
               <div className="flex items-center gap-2">

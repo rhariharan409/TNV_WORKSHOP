@@ -276,7 +276,10 @@ export function generateStudentAuditPDF(data: StudentCourseAuditItem): jsPDF {
       // Repo Link (highlighted in brand green/blue)
       doc.setTextColor(27, 107, 58);
       const urlText = asn.repoUrl || "Repository Submitted & Verified";
-      doc.text(urlText.length > 40 ? urlText.substring(0, 40) + "..." : urlText, tableX + 90, y + 4.5);
+      doc.text(urlText, tableX + 90, y + 4.5, { maxWidth: 62 });
+      if (asn.repoUrl && (asn.repoUrl.startsWith('http://') || asn.repoUrl.startsWith('https://'))) {
+        doc.link(tableX + 90, y + 1, 62, 5, { url: asn.repoUrl });
+      }
 
       doc.setFont("helvetica", "bold");
       doc.setTextColor(16, 185, 129);

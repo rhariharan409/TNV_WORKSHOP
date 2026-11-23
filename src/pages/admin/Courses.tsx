@@ -243,14 +243,14 @@ export const AdminCourses: React.FC = () => {
                 className="overflow-hidden flex flex-col justify-between border-slate-200 dark:border-slate-800 shadow-sm hover:border-brand-green/40 transition-all"
               >
                 <div>
-                  <div className="relative h-44 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <div className="relative h-48 w-full bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center p-3 border-b border-slate-100 dark:border-slate-800">
                     <img
                       src={
                         course.thumbnail_url ||
-                        'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800'
+                        '/tnv-logo.png'
                       }
                       alt={course.title}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain max-h-40 transition-transform duration-300 hover:scale-105"
                     />
                     <div className="absolute top-3 right-3 flex items-center gap-1.5">
                       <Badge variant={isPublished ? 'success' : 'warning'} className="font-bold shadow-xs">

@@ -257,12 +257,12 @@ export const LandingPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {courses.map((c) => (
               <Card key={c.id} className="flex flex-col overflow-hidden hover:shadow-xl hover:border-brand-green/40 transition-all duration-300 group border-slate-200 dark:border-slate-800">
-                <div className="relative h-48 w-full overflow-hidden bg-slate-900">
-                  <img
-                    src={c.thumbnail_url || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800'}
-                    alt={c.title}
-                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
+                  <div className="relative h-48 w-full overflow-hidden bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-3 border-b border-slate-100 dark:border-slate-800">
+                    <img
+                      src={c.thumbnail_url || '/tnv-logo.png'}
+                      alt={c.title}
+                      className="h-full w-full object-contain max-h-40 group-hover:scale-105 transition-transform duration-500"
+                    />
                   <div className="absolute top-3 right-3">
                     <Badge variant="brand" className="shadow-sm font-bold">
                       {c.category || 'Technical Track'}

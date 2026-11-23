@@ -733,10 +733,10 @@ export const AdminSubmissions: React.FC = () => {
                                   href={asn.repoUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-brand-600 dark:text-brand-400 hover:underline inline-flex items-center gap-1"
+                                  className="text-brand-600 dark:text-brand-400 hover:underline inline-flex items-center gap-1 break-all"
                                 >
-                                  <span className="truncate max-w-[240px]">{asn.repoUrl}</span>
-                                  <ExternalLink className="w-3 h-3 shrink-0" />
+                                  <span className="break-all">{asn.repoUrl}</span>
+                                  <ExternalLink className="w-3 h-3 shrink-0 no-print" />
                                 </a>
                               ) : (
                                 <span className="text-slate-400">Repository link recorded</span>

@@ -727,9 +727,11 @@ export const CourseView: React.FC = () => {
           <div className="flex items-center gap-4">
             {/* TNV Academy Logo Badge */}
             <div className="flex items-center gap-2.5 border-r border-slate-200 dark:border-slate-800 pr-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white font-black text-sm shadow-sm">
-                TNV
-              </div>
+              <img
+                src="/tnv-logo.png"
+                alt="TNV Crest"
+                className="h-9 w-9 rounded-xl object-contain shadow-sm bg-white p-0.5 border border-slate-100 dark:border-slate-800 shrink-0"
+              />
               <div className="flex flex-col items-start leading-tight">
                 <span className="text-xs font-black tracking-tight text-brand-600 dark:text-brand-400">
                   TNV ACADEMY
@@ -1791,6 +1793,15 @@ export const CourseView: React.FC = () => {
                                     } catch (e) {
                                       console.warn('Failed to cache assignment submission', e);
                                     }
+                                    try {
+                                      await dataProvider.submitAssignment(
+                                        activeSession.id,
+                                        user.id,
+                                        assignmentText.trim()
+                                      );
+                                    } catch (e) {
+                                      console.warn('Direct Supabase assignment submission note:', e);
+                                    }
                                   }
                                   handleToggleCompleted(activeSession.id);
                                 }}
@@ -1854,25 +1865,41 @@ export const CourseView: React.FC = () => {
                       )}
 
                       {/* Navigation Footer (Prev / Next) */}
-                      <div className="flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleNavigatePrev}
-                          leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
-                        >
-                          Previous Session
-                        </Button>
+                      {(() => {
+                        const curSessIdx = activeSessions.findIndex((s) => s.id === activeSession.id);
+                        const isFirstOverallSession = activeModuleIndex === 0 && curSessIdx === 0;
+                        const isLastOverallSession =
+                          activeModuleIndex === modules.length - 1 &&
+                          curSessIdx === activeSessions.length - 1;
 
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={handleNavigateNext}
-                          rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
-                        >
-                          Next Session →
-                        </Button>
-                      </div>
+                        return (
+                          <div className="flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                            {!isFirstOverallSession ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleNavigatePrev}
+                                leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                              >
+                                Previous Session
+                              </Button>
+                            ) : (
+                              <div />
+                            )}
+
+                            {!isLastOverallSession && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={handleNavigateNext}
+                                rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
+                              >
+                                Next Session →
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()

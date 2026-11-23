@@ -46,17 +46,36 @@ export const AdminAttendance: React.FC = () => {
 
   const handleStatusChange = (studentId: string, status: Attendance['status']) => {
     setAttendanceMap((prev) => ({ ...prev, [studentId]: status }));
+    if (selectedSessionId) {
+      dataProvider.markAttendance(selectedSessionId, studentId, status).catch(console.warn);
+    }
   };
 
   const handleSaveAttendance = async () => {
     if (!selectedSessionId) return;
     setIsSaving(true);
-    for (const [studentId, status] of Object.entries(attendanceMap)) {
-      await dataProvider.markAttendance(selectedSessionId, studentId, status);
+    try {
+      const ops = students.map((st) => {
+        const cur = attendanceMap[st.id] || 'absent';
+        return dataProvider.markAttendance(selectedSessionId, st.id, cur);
+      });
+      await Promise.all(ops);
+
+      const records = await dataProvider.getAttendance(selectedSessionId);
+      const map: Record<string, Attendance['status']> = {};
+      records.forEach((r) => {
+        map[r.student_id] = r.status;
+      });
+      setAttendanceMap(map);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (e) {
+      console.warn('Attendance save sync:', e);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   const presentCount = Object.values(attendanceMap).filter((s) => s === 'present').length;

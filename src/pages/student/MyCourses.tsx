@@ -93,13 +93,11 @@ export const MyCourses: React.FC = () => {
                   {/* Header Row */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
                     <div className="flex items-start gap-4">
-                      {course?.thumbnail_url && (
-                        <img
-                          src={course.thumbnail_url}
-                          alt={courseTitle}
-                          className="w-16 h-16 rounded-xl object-cover shrink-0 hidden sm:block"
-                        />
-                      )}
+                      <img
+                        src={course?.thumbnail_url || '/tnv-logo.png'}
+                        alt={courseTitle}
+                        className="w-16 h-16 rounded-xl object-contain shrink-0 hidden sm:block p-1 bg-white border border-slate-100 dark:border-slate-800"
+                      />
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <Badge variant="brand">{course?.category || 'Technical Track'}</Badge>
