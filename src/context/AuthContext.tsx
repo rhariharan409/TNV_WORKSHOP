@@ -218,35 +218,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Supabase is NOT configured (Demo mode fallback only)
       if (cleanPass !== 'AdminPassword2026!') {
-        if (!cleanPass) {
-          setIsLoading(false);
-          return {
-            success: false,
-            error: 'Invalid password. Please enter the correct password for MaterAdmin@gmail.com.',
-            error: 'Please enter your password.',
-          };
-        }
-
-        const fallbackAdminProfile: Profile = {
-          id: 'd0a9d721-5698-4b5d-b744-64448476057b',
-          email: 'MaterAdmin@gmail.com',
-          full_name: 'Thamilaran (Admin)',
-          role: 'super_admin',
-          college_name: 'TNV Workshop Academy',
-          department: 'Administration',
-          year_of_study: 'Faculty',
-          phone: '+91 98765 43210',
-          is_suspended: false,
-          created_at: new Date().toISOString(),
-        };
-
-        setUser(fallbackAdminProfile);
-        localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(fallbackAdminProfile));
         setIsLoading(false);
-        return { success: true, role: 'super_admin' };
+        return {
+          success: false,
+          error: cleanPass
+            ? 'Invalid password. Please enter the correct password for MaterAdmin@gmail.com.'
+            : 'Please enter your password.',
+        };
       }
 
-      // 2. STUDENT AUTHENTICATION (All other emails & passwords are for students)
+      const fallbackAdminProfile: Profile = {
+        id: 'd0a9d721-5698-4b5d-b744-64448476057b',
+        email: 'MaterAdmin@gmail.com',
+        full_name: 'Thamilaran (Admin)',
+        role: 'super_admin',
+        college_name: 'TNV Workshop Academy',
+        department: 'Administration',
+        year_of_study: 'Faculty',
+        phone: '+91 98765 43210',
+        is_suspended: false,
+        created_at: new Date().toISOString(),
+      };
+
+      setUser(fallbackAdminProfile);
+      localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(fallbackAdminProfile));
+      setIsLoading(false);
+      return { success: true, role: 'super_admin' };
+    }
+
+    // 2. STUDENT AUTHENTICATION (All other emails & passwords are for students)
       if (!cleanPass) {
         setIsLoading(false);
         return { success: false, error: 'Please enter your student account password.' };
