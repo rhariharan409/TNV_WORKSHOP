@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Profile, UserRole } from '../types/database';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dataProvider } from '../lib/dataProvider';
@@ -118,6 +118,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (profile) {
             setUser(profile);
             localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(profile));
+          } else {
+            const fallback: Profile = {
+              id: session.user.id,
+              email: session.user.email || '',
+              full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'TNV Student',
+              role: (session.user.user_metadata?.role as UserRole) || 'student',
+              college_name: session.user.user_metadata?.college_name || '',
+              department: session.user.user_metadata?.department || '',
+              year_of_study: session.user.user_metadata?.year_of_study || '',
+              phone: session.user.user_metadata?.phone || '',
+              created_at: new Date().toISOString(),
+            };
+            setUser(fallback);
+            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(fallback));
           }
         }
       });
@@ -399,16 +413,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Dummy role switching disabled per user specification
     };
 
-    const refreshProfile = async (): Promise<void> => {
-      if (user?.id) {
-        const profiles = await dataProvider.getProfiles();
-        const updated = profiles.find((p) => p.id === user.id);
-        if (updated) {
-          setUser(updated);
-          localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(updated));
+    const refreshProfile = useCallback(async (): Promise<void> => {
+      try {
+        let targetId = user?.id;
+        if (!targetId && isConfigured) {
+          const { data: { session } } = await supabase.auth.getSession();
+          targetId = session?.user?.id;
         }
+        if (!targetId) return;
+
+        if (isConfigured) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', targetId)
+            .maybeSingle();
+          if (profile) {
+            setUser(profile);
+            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(profile));
+          }
+        } else {
+          const profiles = await dataProvider.getProfiles();
+          const updated = profiles.find((p) => p.id === targetId);
+          if (updated) {
+            setUser(updated);
+            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(updated));
+          }
+        }
+      } catch (e) {
+        console.warn('refreshProfile error:', e);
       }
-    };
+    }, [user?.id, isConfigured]);
 
     return (
       <AuthContext.Provider

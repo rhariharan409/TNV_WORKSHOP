@@ -7,6 +7,8 @@ import { Lock, Eye, EyeOff, Phone, School, BookOpen, Calendar, CheckCircle2, Shi
 export const CompleteRegistration: React.FC = () => {
   const navigate = useNavigate();
   const { user, isLoading: isAuthLoading, refreshProfile } = useAuth();
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [isVerifying, setIsVerifying] = useState(true);
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,12 +22,55 @@ export const CompleteRegistration: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Protected: redirect to login if not authenticated
+  // Protected: verify active session before redirecting
   useEffect(() => {
-    if (!isAuthLoading && !user) {
-      navigate('/login', { replace: true });
+    let isMounted = true;
+    const verifySession = async () => {
+      if (!isSupabaseConfigured()) {
+        if (isMounted) setIsVerifying(false);
+        return;
+      }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (isMounted) {
+          if (session?.user) {
+            setSessionUser(session.user);
+            if (!user) {
+              refreshProfile();
+            }
+          } else if (!user && !isAuthLoading) {
+            navigate('/login', { replace: true });
+          }
+        }
+      } catch (e) {
+        console.warn('Session verification notice:', e);
+      } finally {
+        if (isMounted) setIsVerifying(false);
+      }
+    };
+
+    verifySession();
+    return () => {
+      isMounted = false;
+    };
+  }, [user, isAuthLoading, navigate, refreshProfile]);
+
+  // Sync profile defaults when user or session loads
+  useEffect(() => {
+    const active = user || sessionUser;
+    if (active) {
+      if (!phone && active.phone) setPhone(active.phone);
+      if (!college && (active.college_name || active.user_metadata?.college_name)) {
+        setCollege(active.college_name || active.user_metadata?.college_name);
+      }
+      if (!department && (active.department || active.user_metadata?.department)) {
+        setDepartment(active.department || active.user_metadata?.department);
+      }
+      if (active.year_of_study || active.user_metadata?.year_of_study) {
+        setYear(active.year_of_study || active.user_metadata?.year_of_study);
+      }
     }
-  }, [user, isAuthLoading, navigate]);
+  }, [user, sessionUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,29 +116,41 @@ export const CompleteRegistration: React.FC = () => {
       return;
     }
 
+    const activeUserId = user?.id || sessionUser?.id;
+    if (!activeUserId) {
+      setError('Active session not found. Please log in again.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      if (isSupabaseConfigured() && user?.id) {
+      if (isSupabaseConfigured() && activeUserId) {
         // 1. Update user password in Supabase Auth
         const { error: authErr } = await supabase.auth.updateUser({ password });
         if (authErr) {
           throw new Error(authErr.message || 'Failed to update account password.');
         }
 
-        // 2. Update user's row in public.profiles with the details
+        // 2. Upsert user's row in public.profiles with the details
+        const emailToSave = user?.email || sessionUser?.email || '';
+        const nameToSave = user?.full_name || sessionUser?.user_metadata?.full_name || sessionUser?.user_metadata?.name || 'TNV Student';
+
         const { error: profileErr } = await supabase
           .from('profiles')
-          .update({
+          .upsert({
+            id: activeUserId,
+            email: emailToSave,
+            full_name: nameToSave,
+            role: 'student',
             phone: phone.trim(),
             college_name: college.trim(),
             department: department.trim(),
             year_of_study: year.trim(),
-          })
-          .eq('id', user.id);
+          }, { onConflict: 'id' });
 
         if (profileErr) {
-          console.warn('Profile update warning:', profileErr.message);
+          console.warn('Profile upsert warning:', profileErr.message);
         }
 
         // 3. Call supabase.rpc('mark_password_set')
@@ -120,7 +177,7 @@ export const CompleteRegistration: React.FC = () => {
     }
   };
 
-  if (isAuthLoading) {
+  if (isAuthLoading || isVerifying) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f0f4f1]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-700"></div>
@@ -145,7 +202,7 @@ export const CompleteRegistration: React.FC = () => {
               Complete Your Registration
             </h1>
             <p className="text-xs text-slate-500 font-medium max-w-md mx-auto">
-              Welcome, <strong>{user?.email}</strong>. Set your password and provide your college details to finalize your enrollment.
+              Welcome, <strong>{user?.email || sessionUser?.email}</strong>. Set your password and provide your college details to finalize your enrollment.
             </p>
           </div>
 
