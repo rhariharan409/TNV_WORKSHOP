@@ -15,7 +15,6 @@ import { LandingPage } from './pages/LandingPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { LoginPage } from './pages/LoginPage';
 import { AuthCallback } from './pages/auth/AuthCallback';
-import { CompleteRegistration } from './pages/auth/CompleteRegistration';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AboutPage } from './pages/AboutPage';
@@ -65,7 +64,7 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/complete-registration" element={<CompleteRegistration />} />
+            <Route path="/complete-registration" element={<Navigate to="/student/dashboard" replace />} />
             <Route path="/verify-certificate/:id" element={<VerifyCertificatePage />} />
             <Route path="/about" element={<Navigate to="/" replace />} />
             <Route path="/contact" element={<Navigate to="/" replace />} />

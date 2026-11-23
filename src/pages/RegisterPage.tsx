@@ -68,7 +68,7 @@ export const RegisterPage: React.FC = () => {
               Verified Google Sign-In Required
             </p>
             <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-              New students may only sign up with a real Google account. In the next step, you will configure your secure password and college details.
+              Sign in securely with your verified Google account to immediately access your learning modules, assignments, and certificates.
             </p>
           </div>
 

@@ -49,10 +49,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
     role === 'super_admin' ||
     user?.role === 'admin' ||
     user?.role === 'super_admin' ||
-    user?.email?.toLowerCase() === 'materadmin@gmail.com' ||
-    user?.email?.toLowerCase() === 'masteradmin@gmail.com';
+    user?.email?.toLowerCase() === 'masteradmin@gmail.com' ||
+    user?.email?.toLowerCase() === 'materadmin@gmail.com';
 
   const isInAdminPortal = location.pathname.startsWith('/admin');
+
+  const rawName = user?.full_name || (isUserAdmin ? 'masteradmin' : 'Student');
+  const displayName = rawName.replace(/materadmin/gi, 'masteradmin');
+  const displayEmail = (user?.email || '').replace(/materadmin/gi, 'masteradmin');
 
   return (
     <header className="sticky top-0 z-30 h-16 w-full border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 px-4 sm:px-6 flex items-center justify-between gap-4">
@@ -127,11 +131,11 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
             className="flex items-center gap-2.5 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1b6b3a] text-white font-bold text-xs shadow-sm">
-              {user?.full_name?.charAt(0) || (isUserAdmin ? 'A' : 'S')}
+              {displayName.charAt(0).toUpperCase() || (isUserAdmin ? 'M' : 'S')}
             </div>
             <div className="hidden md:block text-left">
               <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                {user?.full_name || (isUserAdmin ? 'Thamilaran (Admin)' : 'Student')}
+                {displayName}
               </p>
               <p className="text-[10px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wider font-extrabold">
                 {isUserAdmin ? 'Super Admin' : 'Student'}
@@ -142,8 +146,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
           {profileDropdownOpen && (
             <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-100 bg-white p-2 shadow-2xl dark:border-slate-800 dark:bg-slate-900 z-50">
               <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 rounded-xl mb-1">
-                <p className="text-xs font-black text-slate-900 dark:text-white">{user?.full_name}</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
+                <p className="text-xs font-black text-slate-900 dark:text-white">{displayName}</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{displayEmail}</p>
                 <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-[#1b6b3a] dark:text-emerald-400 uppercase">
                   {isUserAdmin ? <ShieldCheck className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                   <span>{isUserAdmin ? 'Super Admin Console' : 'Student Portal'}</span>

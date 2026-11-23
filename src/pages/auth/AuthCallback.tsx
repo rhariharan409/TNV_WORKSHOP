@@ -31,43 +31,42 @@ export const AuthCallback: React.FC = () => {
         // 1. Check if admin user
         const email = (user.email || '').toLowerCase();
         const isAdmin =
-          email === 'materadmin@gmail.com' ||
           email === 'masteradmin@gmail.com' ||
+          email === 'materadmin@gmail.com' ||
           user.user_metadata?.role === 'admin' ||
           user.user_metadata?.role === 'super_admin';
 
-        if (isAdmin) {
-          try {
-            await Promise.race([
-              supabase.rpc('log_login_event', { p_method: 'oauth' }),
-              new Promise((r) => setTimeout(r, 1500)),
-            ]);
-          } catch (e) {
-            console.warn('log_login_event RPC notice:', e);
-          }
-          if (isMounted) {
-            navigate('/admin/dashboard', { replace: true });
-          }
-          return;
-        }
-
-        // 2. Read public.signup_records for auth user with timeout protection
-        let record: any = null;
+        // 2. Ensure profile exists in public.profiles for Google sign-in user
         try {
-          const res: any = await Promise.race([
-            supabase
-              .from('signup_records')
-              .select('*')
-              .eq('user_id', user.id)
-              .maybeSingle(),
-            new Promise((r) => setTimeout(() => r({ data: null, error: 'timeout' }), 2500)),
-          ]);
-          record = res?.data;
-        } catch (recError) {
-          console.warn('Error reading signup_records in callback:', recError);
+          const userMeta = user.user_metadata || {};
+          const fullName =
+            userMeta.full_name ||
+            userMeta.name ||
+            (user.email ? user.email.split('@')[0] : 'TNV Student');
+
+          await supabase
+            .from('profiles')
+            .upsert(
+              {
+                id: user.id,
+                email: (user.email || '').toLowerCase(),
+                full_name: fullName,
+                role: isAdmin ? 'super_admin' : 'student',
+              },
+              { onConflict: 'id', ignoreDuplicates: true }
+            );
+        } catch (profErr) {
+          console.warn('Profile sync notice in callback:', profErr);
         }
 
-        // 3. Log login event (non-blocking)
+        // 3. Refresh profile into AuthContext
+        try {
+          await refreshProfile();
+        } catch (e) {
+          console.warn('refreshProfile notice in callback:', e);
+        }
+
+        // 4. Log login event (non-blocking)
         try {
           await Promise.race([
             supabase.rpc('log_login_event', { p_method: 'oauth' }),
@@ -77,10 +76,10 @@ export const AuthCallback: React.FC = () => {
           console.warn('log_login_event RPC notice:', e);
         }
 
+        // 5. Navigate directly to dashboard (no intermediate form)
         if (isMounted) {
-          // If password_set is false (or record missing for new student), redirect to /complete-registration
-          if (!record || record.password_set === false) {
-            navigate('/complete-registration', { replace: true });
+          if (isAdmin) {
+            navigate('/admin/dashboard', { replace: true });
           } else {
             navigate('/student/dashboard', { replace: true });
           }

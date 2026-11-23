@@ -46,8 +46,8 @@ export const AdminCourses: React.FC = () => {
     // Super admins see all courses regardless of created_by
     const isSuperAdmin =
       user.role === 'super_admin' ||
-      user.email?.toLowerCase() === 'materadmin@gmail.com' ||
-      user.email?.toLowerCase() === 'masteradmin@gmail.com';
+      user.email?.toLowerCase() === 'masteradmin@gmail.com' ||
+      user.email?.toLowerCase() === 'materadmin@gmail.com';
     const adminId = isSuperAdmin ? undefined : user.id;
     const cList = await dataProvider.getCourses({ adminId, isSuperAdmin });
     setCourses(cList);

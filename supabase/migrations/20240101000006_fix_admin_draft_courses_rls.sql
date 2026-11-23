@@ -104,7 +104,7 @@ INSERT INTO public.profiles (
 )
 VALUES (
     'd0a9d721-5698-4b5d-b744-64448476057b',
-    'MaterAdmin@gmail.com',
+    'MasterAdmin@gmail.com',
     'Thamilaran (Admin)',
     'super_admin',
     'TNV Workshop Academy',
@@ -115,7 +115,7 @@ VALUES (
 ON CONFLICT (id) DO UPDATE SET
     role = 'super_admin',
     full_name = 'Thamilaran (Admin)',
-    email = 'MaterAdmin@gmail.com';
+    email = 'MasterAdmin@gmail.com';
 
 UPDATE public.profiles
 SET role = 'super_admin', full_name = 'Thamilaran (Admin)'

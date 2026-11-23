@@ -62,10 +62,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
       const isAdmin =
         res.role === 'admin' ||
         res.role === 'super_admin' ||
-        cleanEmail === 'materadmin@gmail.com' ||
         cleanEmail === 'masteradmin@gmail.com' ||
-        cleanEmail === 'materadmin' ||
-        cleanEmail === 'masteradmin';
+        cleanEmail === 'materadmin@gmail.com' ||
+        cleanEmail === 'masteradmin' ||
+        cleanEmail === 'materadmin';
 
       if (isAdmin) {
         navigate('/admin/dashboard', { replace: true });
@@ -90,8 +90,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
   const isUserAdmin =
     user?.role === 'super_admin' ||
     user?.role === 'admin' ||
-    user?.email?.toLowerCase() === 'materadmin@gmail.com' ||
-    user?.email?.toLowerCase() === 'masteradmin@gmail.com';
+    user?.email?.toLowerCase() === 'masteradmin@gmail.com' ||
+    user?.email?.toLowerCase() === 'materadmin@gmail.com';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f0f4f1] text-slate-800 font-sans selection:bg-brand-600 selection:text-white">
@@ -243,7 +243,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
                   <div className="text-right">
                     <button
                       type="button"
-                      onClick={() => alert('Please contact administrator at MaterAdmin@gmail.com for credential assistance.')}
+                      onClick={() => alert('Please contact administrator at masteradmin@gmail.com for credential assistance.')}
                       className="text-[11px] text-slate-500 hover:text-brand-700 font-medium"
                     >
                       Forgot password?

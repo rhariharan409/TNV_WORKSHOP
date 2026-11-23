@@ -25,8 +25,8 @@ export const StudentSidebar: React.FC = () => {
   const isUserAdmin =
     user?.role === 'super_admin' ||
     user?.role === 'admin' ||
-    user?.email?.toLowerCase() === 'materadmin@gmail.com' ||
-    user?.email?.toLowerCase() === 'masteradmin@gmail.com';
+    user?.email?.toLowerCase() === 'masteradmin@gmail.com' ||
+    user?.email?.toLowerCase() === 'materadmin@gmail.com';
 
   const links = [
     { name: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
@@ -100,7 +100,7 @@ export const StudentSidebar: React.FC = () => {
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
           <div className="truncate pr-2">
             <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-              {user?.full_name || 'Enrolled Student'}
+              {user?.full_name?.replace(/materadmin/gi, 'masteradmin') || (isUserAdmin ? 'masteradmin' : 'Enrolled Student')}
             </p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
               {isUserAdmin ? 'Lead Academy Administrator' : user?.college_name || 'Engineering Student'}

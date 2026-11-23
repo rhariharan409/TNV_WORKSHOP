@@ -56,8 +56,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .maybeSingle();
 
             if (profile) {
-              setUser(profile);
-              localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(profile));
+              const sanitized: Profile = {
+                ...profile,
+                full_name: profile.full_name?.replace(/materadmin/gi, 'masteradmin') || profile.full_name,
+                email: (profile.email || '').replace(/materadmin/gi, 'masteradmin'),
+              };
+              setUser(sanitized);
+              localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(sanitized));
             } else {
               // Fallback profile if record creation was delayed
               const fallback: Profile = {
@@ -116,8 +121,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('id', session.user.id)
             .maybeSingle();
           if (profile) {
-            setUser(profile);
-            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(profile));
+            const sanitized: Profile = {
+              ...profile,
+              full_name: profile.full_name?.replace(/materadmin/gi, 'masteradmin') || profile.full_name,
+              email: (profile.email || '').replace(/materadmin/gi, 'masteradmin'),
+            };
+            setUser(sanitized);
+            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(sanitized));
           } else {
             const fallback: Profile = {
               id: session.user.id,
@@ -157,19 +167,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Invalid email or password' };
     }
 
-    // 1. ADMIN ACCOUNT CHECK (Dedicated administrator: MaterAdmin@gmail.com)
+    // 1. ADMIN ACCOUNT CHECK (Dedicated administrator: masteradmin@gmail.com)
     const isAdminAccount =
-      cleanEmail === 'materadmin@gmail.com' ||
       cleanEmail === 'masteradmin@gmail.com' ||
-      cleanEmail === 'materadmin' ||
-      cleanEmail === 'masteradmin';
+      cleanEmail === 'materadmin@gmail.com' ||
+      cleanEmail === 'masteradmin' ||
+      cleanEmail === 'materadmin';
 
     if (isConfigured) {
-      const authEmail = cleanEmail.includes('@') ? cleanEmail : 'MaterAdmin@gmail.com';
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      let signInData = null;
+      let signInError = null;
+
+      const authEmail = cleanEmail.includes('@')
+        ? cleanEmail
+        : 'masteradmin@gmail.com';
+
+      const res1 = await supabase.auth.signInWithPassword({
         email: authEmail,
         password: cleanPass,
       });
+
+      if (!res1.error && res1.data?.user) {
+        signInData = res1.data;
+      } else if (isAdminAccount) {
+        // Try alternate spelling if applicable
+        const altEmail = authEmail.toLowerCase() === 'masteradmin@gmail.com'
+          ? 'materadmin@gmail.com'
+          : 'masteradmin@gmail.com';
+        const res2 = await supabase.auth.signInWithPassword({
+          email: altEmail,
+          password: cleanPass,
+        });
+        if (!res2.error && res2.data?.user) {
+          signInData = res2.data;
+        } else {
+          signInError = res1.error || res2.error;
+        }
+      } else {
+        signInError = res1.error;
+      }
 
       if (signInError || !signInData?.user) {
         setIsLoading(false);
@@ -216,8 +252,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let activeProfile: Profile;
       if (profileData) {
+        const rawName = profileData.full_name || (isProfileAdmin ? 'masteradmin' : 'TNV Student');
+        const cleanName = rawName.replace(/materadmin/gi, 'masteradmin');
+        const cleanEmailStr = (profileData.email || '').replace(/materadmin/gi, 'masteradmin');
+
         activeProfile = {
           ...profileData,
+          full_name: cleanName,
+          email: cleanEmailStr,
           role: isProfileAdmin
             ? profileData.role === 'admin' || profileData.role === 'super_admin'
               ? profileData.role
@@ -227,10 +269,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         const newProfile: Profile = {
           id: authUserId,
-          email: signInData.user.email || cleanEmail,
+          email: (signInData.user.email || cleanEmail).replace(/materadmin/gi, 'masteradmin'),
           full_name:
-            signInData.user.user_metadata?.full_name ||
-            (isProfileAdmin ? 'Thamilaran (Admin)' : 'TNV Student'),
+            signInData.user.user_metadata?.full_name?.replace(/materadmin/gi, 'masteradmin') ||
+            (isProfileAdmin ? 'masteradmin' : 'TNV Student'),
           role: isProfileAdmin ? 'super_admin' : 'student',
           college_name: isProfileAdmin ? 'TNV Workshop Academy' : 'Engineering College',
           department: isProfileAdmin ? 'Administration' : 'Information Technology',
@@ -262,8 +304,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const fallbackAdminProfile: Profile = {
         id: 'd0a9d721-5698-4b5d-b744-64448476057b',
-        email: 'MaterAdmin@gmail.com',
-        full_name: 'Thamilaran (Admin)',
+        email: 'masteradmin@gmail.com',
+        full_name: 'masteradmin',
         role: 'super_admin',
         college_name: 'TNV Workshop Academy',
         department: 'Administration',
@@ -429,15 +471,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('id', targetId)
             .maybeSingle();
           if (profile) {
-            setUser(profile);
-            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(profile));
+            const sanitized: Profile = {
+              ...profile,
+              full_name: profile.full_name?.replace(/materadmin/gi, 'masteradmin') || profile.full_name,
+              email: (profile.email || '').replace(/materadmin/gi, 'masteradmin'),
+            };
+            setUser(sanitized);
+            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(sanitized));
           }
         } else {
           const profiles = await dataProvider.getProfiles();
           const updated = profiles.find((p) => p.id === targetId);
           if (updated) {
-            setUser(updated);
-            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(updated));
+            const sanitized: Profile = {
+              ...updated,
+              full_name: updated.full_name?.replace(/materadmin/gi, 'masteradmin') || updated.full_name,
+              email: (updated.email || '').replace(/materadmin/gi, 'masteradmin'),
+            };
+            setUser(sanitized);
+            localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(sanitized));
           }
         }
       } catch (e) {
