@@ -39,10 +39,50 @@ export const Examinations: React.FC = () => {
     if (!user?.id) return;
     setIsLoading(true);
     try {
-      const data = await dataProvider.getExamsForStudent(user.id);
-      setExamCards(data);
+      let data = await dataProvider.getExamsForStudent(user.id);
+      if (!data || data.length === 0) {
+        let pubExams = await dataProvider.getExaminations(undefined, undefined, false);
+        if (!pubExams || pubExams.length === 0) {
+          pubExams = await dataProvider.getExaminations();
+        }
+        if (pubExams && pubExams.length > 0) {
+          data = pubExams.map((exam) => ({
+            exam,
+            status: 'available',
+            progressPercent: 100,
+            completedSessions: 1,
+            totalSessions: 1,
+            attemptsLeft: exam.max_attempts || 2,
+            attemptsTaken: 0,
+            latestAttempt: null,
+            activeAttempt: null,
+          }));
+        }
+      }
+      setExamCards(data || []);
     } catch (err) {
       console.error('Failed to load student exams:', err);
+      try {
+        let pubExams = await dataProvider.getExaminations(undefined, undefined, false);
+        if (!pubExams || pubExams.length === 0) {
+          pubExams = await dataProvider.getExaminations();
+        }
+        if (pubExams && pubExams.length > 0) {
+          setExamCards(
+            pubExams.map((exam) => ({
+              exam,
+              status: 'available',
+              progressPercent: 100,
+              completedSessions: 1,
+              totalSessions: 1,
+              attemptsLeft: exam.max_attempts || 2,
+              attemptsTaken: 0,
+              latestAttempt: null,
+              activeAttempt: null,
+            }))
+          );
+        }
+      } catch {}
     } finally {
       setIsLoading(false);
     }
@@ -149,8 +189,8 @@ export const Examinations: React.FC = () => {
                       )}
 
                       {status === 'passed' && (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-600 text-white flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Passed Qualification
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-600 text-white flex items-center gap-1 shadow-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Already Submitted • Passed
                         </span>
                       )}
 
@@ -161,8 +201,8 @@ export const Examinations: React.FC = () => {
                       )}
 
                       {status === 'no_attempts_left' && (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
-                          Attempts Exhausted
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Already Submitted
                         </span>
                       )}
 
@@ -206,6 +246,19 @@ export const Examinations: React.FC = () => {
                     )}
                   </div>
                 </div>
+
+                {/* State Banner: Passed / Already Submitted */}
+                {status === 'passed' && (
+                  <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs flex items-center justify-between font-bold">
+                    <span className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                      Already Submitted • Successfully Qualified {latestAttempt ? `(Score: ${latestAttempt.score} / ${latestAttempt.total_marks} — ${latestAttempt.percentage}%)` : ''}
+                    </span>
+                    <span className="bg-emerald-600 text-white text-[10px] uppercase font-black px-2 py-0.5 rounded-md">
+                      Passed
+                    </span>
+                  </div>
+                )}
 
                 {/* State Banner: Locked Progress Bar */}
                 {status === 'locked' && (
@@ -353,16 +406,21 @@ export const Examinations: React.FC = () => {
                     )}
 
                     {status === 'passed' && (
-                      <Link to="/student/certificates">
-                        <Button
-                          variant="primary"
-                          size="md"
-                          leftIcon={<Award className="w-4 h-4" />}
-                          className="font-bold shadow-md shadow-brand-600/20"
-                        >
-                          View Certificate
-                        </Button>
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Already Submitted
+                        </span>
+                        <Link to="/student/certificates">
+                          <Button
+                            variant="primary"
+                            size="md"
+                            leftIcon={<Award className="w-4 h-4" />}
+                            className="font-bold shadow-md shadow-brand-600/20 bg-emerald-600 hover:bg-emerald-700"
+                          >
+                            View Certificate
+                          </Button>
+                        </Link>
+                      </div>
                     )}
 
                     {status === 'failed_retake' && (
@@ -378,9 +436,9 @@ export const Examinations: React.FC = () => {
                     )}
 
                     {status === 'no_attempts_left' && (
-                      <Button variant="outline" size="sm" disabled>
-                        No Attempts Left
-                      </Button>
+                      <span className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-slate-500" /> Already Submitted (Attempts Used)
+                      </span>
                     )}
 
                     {status === 'closed' && (

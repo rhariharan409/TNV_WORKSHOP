@@ -1302,7 +1302,7 @@ export const dataProvider = {
   },
 
   async getStudentCourseRealScore(studentId: string, courseId: string): Promise<number> {
-    if (!studentId || !courseId) return 0;
+      if(!studentId || !courseId) return 0;
     try {
       if (isSupabaseConfigured()) {
         // 1. Check if student has taken any examinations for this course
@@ -1498,6 +1498,14 @@ export const dataProvider = {
         .maybeSingle();
 
       if (existingCert) {
+        await supabase
+          .from('certificates')
+          .update({
+            status: 'issued',
+            overall_score: finalScore,
+            grade: finalGrade,
+          })
+          .eq('id', existingCert.id);
         try {
           await supabase
             .from('certificates')
@@ -1563,6 +1571,7 @@ export const dataProvider = {
         .maybeSingle();
 
       if (insErr) {
+        console.warn('Direct insert into certificates table had warning:', insErr.message);
         delete payload.is_force_issued;
         const { data: retryInsert } = await supabase
           .from('certificates')
@@ -3097,62 +3106,110 @@ export const dataProvider = {
   },
 
   async getExamsForStudent(studentId: string): Promise<StudentExamCardData[]> {
-    if (!isSupabaseConfigured() || !studentId) return [];
+    if (!studentId) return [];
 
     try {
-      // 1. Get approved enrollments
-      const { data: enrollments, error: enrError } = await supabase
-        .from('course_enrollments')
-        .select('course_id, status, course:courses(*)')
-        .eq('student_id', studentId)
-        .eq('status', 'approved');
+      // 1. Fetch all examinations (exact same source as Dashboard)
+      let examRows: Examination[] = [];
+      if (isSupabaseConfigured()) {
+        examRows = await this.getExaminations(undefined, undefined, false);
+        if (!examRows || examRows.length === 0) {
+          examRows = await this.getExaminations();
+        }
+      }
+      if (!examRows || examRows.length === 0) {
+        const localExams = getLocalStore<Examination[]>('examinations', []);
+        examRows = localExams.filter((e) => e.is_published);
+        if (examRows.length === 0) examRows = localExams;
+      }
+      if (!examRows || examRows.length === 0) return [];
 
-      if (enrError || !enrollments || enrollments.length === 0) return [];
+      // 2. Get enrollments for student
+      let enrollments: any[] = [];
+      if (isSupabaseConfigured()) {
+        const { data: enrs } = await supabase
+          .from('course_enrollments')
+          .select('course_id, status, is_completed, progress_percentage, course:courses(*)')
+          .eq('student_id', studentId);
+        enrollments = enrs || [];
+      }
+      if (enrollments.length === 0) {
+        const localEnrs = getLocalStore<CourseEnrollment[]>('course_enrollments', []);
+        enrollments = localEnrs.filter((e) => e.student_id === studentId);
+      }
 
-      const courseIds = enrollments.map((e) => e.course_id);
-
-      // 2. Fetch published examinations for these courses
-      const { data: examRows, error: examErr } = await supabase
-        .from('examinations')
-        .select('*, course:courses(*), questions:exam_questions(id, marks)')
-        .in('course_id', courseIds)
-        .eq('is_published', true)
-        .order('created_at', { ascending: false });
-
-      if (examErr || !examRows || examRows.length === 0) return [];
-
-      // 3. Get all sessions for these courses
-      const { data: moduleSessions } = await supabase
-        .from('sessions')
-        .select('id, module:modules!inner(course_id)');
-
-      // Map sessions per course
+      // 3. Get all sessions for target courses
+      const targetCourseIds = Array.from(new Set(examRows.map((e) => e.course_id).filter(Boolean))) as string[];
       const courseSessionsMap: Record<string, string[]> = {};
-      (moduleSessions || []).forEach((s: any) => {
-        const cId = s.module?.course_id;
-        if (cId) {
-          if (!courseSessionsMap[cId]) courseSessionsMap[cId] = [];
-          courseSessionsMap[cId].push(s.id);
+
+      if (isSupabaseConfigured() && targetCourseIds.length > 0) {
+        const { data: modulesData } = await supabase
+          .from('modules')
+          .select('id, course_id')
+          .in('course_id', targetCourseIds);
+
+        const moduleToCourse: Record<string, string> = {};
+        const modIds: string[] = [];
+        (modulesData || []).forEach((m: any) => {
+          moduleToCourse[m.id] = m.course_id;
+          modIds.push(m.id);
+        });
+
+        if (modIds.length > 0) {
+          const { data: sessionsData } = await supabase
+            .from('sessions')
+            .select('id, module_id')
+            .in('module_id', modIds);
+
+          (sessionsData || []).forEach((s: any) => {
+            const cId = moduleToCourse[s.module_id];
+            if (cId) {
+              if (!courseSessionsMap[cId]) courseSessionsMap[cId] = [];
+              courseSessionsMap[cId].push(s.id);
+            }
+          });
+        }
+      }
+
+      // 4. Get completed sessions for this student
+      const completedSessionSet = new Set<string>();
+      if (isSupabaseConfigured()) {
+        const { data: progressRows } = await supabase
+          .from('session_progress')
+          .select('session_id, is_completed')
+          .eq('student_id', studentId)
+          .eq('is_completed', true);
+
+        (progressRows || []).forEach((p) => completedSessionSet.add(p.session_id));
+      }
+
+      const completedCourseSet = new Set<string>();
+      (enrollments || []).forEach((enr: any) => {
+        if (
+          enr.is_completed ||
+          (enr.progress_percentage !== null && enr.progress_percentage !== undefined && enr.progress_percentage >= 100) ||
+          enr.status === 'completed'
+        ) {
+          completedCourseSet.add(enr.course_id);
         }
       });
 
-      // 4. Get completed sessions for this student
-      const { data: progressRows } = await supabase
-        .from('session_progress')
-        .select('session_id, is_completed')
-        .eq('student_id', studentId)
-        .eq('is_completed', true);
-
-      const completedSessionSet = new Set((progressRows || []).map((p) => p.session_id));
-
       // 5. Get all attempts by student for these exams
       const examIds = examRows.map((e) => e.id);
-      const { data: attempts } = await supabase
-        .from('exam_attempts')
-        .select('*')
-        .in('exam_id', examIds)
-        .eq('student_id', studentId)
-        .order('started_at', { ascending: false });
+      let attempts: any[] = [];
+      if (isSupabaseConfigured()) {
+        const { data: attData } = await supabase
+          .from('exam_attempts')
+          .select('*')
+          .in('exam_id', examIds)
+          .eq('student_id', studentId)
+          .order('started_at', { ascending: false });
+        attempts = attData || [];
+      }
+      if (attempts.length === 0) {
+        const localAttempts = getLocalStore<any[]>('exam_attempts', []);
+        attempts = localAttempts.filter((a) => a.student_id === studentId && examIds.includes(a.exam_id));
+      }
 
       const attemptsByExam: Record<string, ExamAttempt[]> = {};
       (attempts || []).forEach((att) => {
@@ -3164,32 +3221,18 @@ export const dataProvider = {
       const results: StudentExamCardData[] = [];
       const now = new Date();
 
-      for (const e of examRows) {
-        const { cleanInstructions, settings } = this._unpackExamInstructions(e.instructions);
-        const questionsList = e.questions || [];
-        const computedTotalMarks = questionsList.reduce((acc: number, curr: any) => acc + (curr.marks || 2), 0) || e.total_marks || 50;
-        const passingPct = e.passing_percentage ?? settings.passing_percentage ?? 50;
-        const passingMarks = Math.ceil((computedTotalMarks * passingPct) / 100);
-
-        const examObj: Examination = {
-          ...e,
-          instructions: cleanInstructions,
-          passing_percentage: passingPct,
-          max_attempts: e.max_attempts ?? settings.max_attempts ?? 2,
-          shuffle_questions: e.shuffle_questions ?? settings.shuffle_questions ?? true,
-          show_answer_review: e.show_answer_review ?? settings.show_answer_review ?? false,
-          total_marks: computedTotalMarks,
-          passing_marks: passingMarks,
-        };
-
-        const allCourseSessionIds = courseSessionsMap[e.course_id] || [];
+      for (const examObj of examRows) {
+        const allCourseSessionIds = examObj.course_id ? courseSessionsMap[examObj.course_id] || [] : [];
         const totalSessions = allCourseSessionIds.length;
-        const completedSessions = allCourseSessionIds.filter((sId) => completedSessionSet.has(sId)).length;
+        let completedSessions = allCourseSessionIds.filter((sId) => completedSessionSet.has(sId)).length;
+        if (examObj.course_id && completedCourseSet.has(examObj.course_id) && totalSessions > 0) {
+          completedSessions = totalSessions;
+        }
         const progressPercent = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 100;
 
-        const examAttempts = attemptsByExam[e.id] || [];
+        const examAttempts = attemptsByExam[examObj.id] || [];
         const latestAttempt = examAttempts[0] || null;
-        const passedAttempt = examAttempts.find((a) => a.is_passed);
+        const passedAttempt = examAttempts.find((a) => a.is_passed || (a.status === 'evaluated' && (a.percentage || 0) >= (examObj.passing_percentage || 50)));
         const inProgressAttempt = examAttempts.find((a) => a.status === 'in_progress');
 
         const maxAttempts = examObj.max_attempts || 2;
@@ -3198,9 +3241,15 @@ export const dataProvider = {
 
         let lockStatus: StudentExamLockStatus = 'available';
 
-        // Check 1: Course completion requirement (All sessions must be completed)
-        if (totalSessions > 0 && completedSessions < totalSessions) {
-          lockStatus = 'locked';
+        // Check 1: Attempts & Completion status FIRST (if already submitted/passed, NEVER lock!)
+        if (passedAttempt || latestAttempt?.is_passed) {
+          lockStatus = 'passed';
+        } else if (inProgressAttempt) {
+          lockStatus = 'in_progress';
+        } else if (attemptsTaken > 0 && attemptsLeft > 0) {
+          lockStatus = 'failed_retake';
+        } else if (attemptsTaken > 0 && attemptsLeft <= 0) {
+          lockStatus = 'no_attempts_left';
         }
         // Check 2: Dates window
         else if (examObj.start_time && new Date(examObj.start_time) > now) {
@@ -3208,15 +3257,9 @@ export const dataProvider = {
         } else if (examObj.end_time && new Date(examObj.end_time) < now) {
           lockStatus = 'closed';
         }
-        // Check 3: Attempts & Completion status
-        else if (inProgressAttempt) {
-          lockStatus = 'in_progress';
-        } else if (passedAttempt) {
-          lockStatus = 'passed';
-        } else if (attemptsTaken > 0 && attemptsLeft > 0) {
-          lockStatus = 'failed_retake';
-        } else if (attemptsTaken > 0 && attemptsLeft <= 0) {
-          lockStatus = 'no_attempts_left';
+        // Check 3: Course completion requirement (All sessions must be completed)
+        else if (totalSessions > 0 && completedSessions < totalSessions && !completedCourseSet.has(examObj.course_id)) {
+          lockStatus = 'locked';
         } else {
           lockStatus = 'available';
         }
@@ -3882,6 +3925,7 @@ export const dataProvider = {
     [...dbCerts, ...localCerts].forEach((c) => {
       const key = c.certificate_number || c.id;
       if (!mergedMap.has(key)) {
+        mergedMap.set(key, c);
         const localMatch = localMap.get(key);
         const forceIssued = c.is_force_issued ?? localMatch?.is_force_issued ?? false;
         const realScore = c.overall_score !== undefined && c.overall_score !== null ? c.overall_score : (localMatch?.overall_score ?? 0);
@@ -4152,7 +4196,8 @@ export const dataProvider = {
           .eq('id', certificateId);
 
         if (error) {
-          console.warn('Error updating status in Supabase certificates:', error.message);
+          console.error('Error revoking certificate:', error);
+          throw new Error(`Failed to revoke certificate: ${error.message}`);
         }
       } catch (err) {
         console.warn('Failed to revoke certificate in Supabase:', err);
