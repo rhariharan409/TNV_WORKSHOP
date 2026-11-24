@@ -290,8 +290,15 @@ export const ExamTake: React.FC = () => {
       const res = await dataProvider.submitExamAttempt(attemptId, answersRef.current);
       setExamResult(res);
 
-      // Trigger Confetti on Pass
+      // Trigger Confetti and sync course completion on Pass
       if (res.is_passed) {
+        if (exam?.course_id && user?.id) {
+          try {
+            await dataProvider.syncCourseProgressWithExam(user.id, exam.course_id);
+          } catch (e) {
+            console.warn('Could not sync course progress on exam pass:', e);
+          }
+        }
         try {
           confetti({
             particleCount: 120,

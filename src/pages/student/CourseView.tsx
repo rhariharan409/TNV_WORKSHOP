@@ -22,6 +22,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Award,
+  GraduationCap,
   Lock,
   Unlock,
   Bookmark,
@@ -106,6 +107,11 @@ export const CourseView: React.FC = () => {
     nextModuleTitle?: string;
     nextModuleId?: string;
   } | null>(null);
+
+  // Final Examination state
+  const [courseExam, setCourseExam] = useState<any | null>(null);
+  const [examAttempt, setExamAttempt] = useState<any | null>(null);
+  const [isExamPassed, setIsExamPassed] = useState<boolean>(false);
 
   // Assignment submission state
   const [assignmentText, setAssignmentText] = useState('');
@@ -204,14 +210,19 @@ export const CourseView: React.FC = () => {
         }
         setSessionsMap(map);
 
-        // Fetch user progress and quizzes
+        // Fetch user progress, quizzes, and course final exam status
         if (user?.id) {
-          const [userProg, courseQuizzes] = await Promise.all([
+          const [userProg, courseQuizzes, finalExam, examStatus] = await Promise.all([
             dataProvider.getSessionProgress(user.id).catch(() => []),
             dataProvider.getQuizzes(currentCourse.id).catch(() => []),
+            dataProvider.getCourseFinalExam(currentCourse.id).catch(() => null),
+            dataProvider.getStudentCourseExamStatus(user.id, currentCourse.id).catch(() => null),
           ]);
           setProgressList(userProg);
           setQuizzes(courseQuizzes);
+          setCourseExam(finalExam);
+          setExamAttempt(examStatus?.latestAttempt || null);
+          setIsExamPassed(Boolean(examStatus?.isPassed));
 
           // Load passed quizzes from localStorage
           const savedPassed = localStorage.getItem(`passed_quizzes_${user.id}_${currentCourse.id}`);
@@ -352,15 +363,37 @@ export const CourseView: React.FC = () => {
   const completedSessionsCount = progressList.filter(
     (p) => p.is_completed && allSessions.some((s) => s.id === p.session_id)
   ).length;
-  const progressPercent =
-    totalSessionsCount > 0 ? Math.round((completedSessionsCount / totalSessionsCount) * 100) : 0;
+  const allSessionsDone = totalSessionsCount > 0 && completedSessionsCount >= totalSessionsCount;
+  const hasCourseExam = Boolean(courseExam);
+
+  // Requirement:
+  // - If NO final exam: 100% when all modules/sessions are completed.
+  // - If HAS final exam: 100% ONLY when all sessions are completed AND final exam is passed!
+  //   Sessions completed alone gives up to 80% (capped), awaiting final exam.
+  const progressPercent = (() => {
+    if (totalSessionsCount === 0) return 0;
+    if (!hasCourseExam) {
+      return Math.round((completedSessionsCount / totalSessionsCount) * 100);
+    }
+    if (allSessionsDone && isExamPassed) {
+      return 100;
+    }
+    if (allSessionsDone && !isExamPassed) {
+      return 80; // Curriculum completed, awaiting passing final exam for 100%
+    }
+    return Math.round((completedSessionsCount / totalSessionsCount) * 80);
+  })();
+
+  const isCourseCompleted = !hasCourseExam
+    ? (allSessionsDone && totalSessionsCount > 0)
+    : (allSessionsDone && isExamPassed);
 
   // Auto-sync course enrollment progress to Supabase
   useEffect(() => {
     if (user?.id && course?.id && progressPercent !== undefined) {
-      dataProvider.updateCourseEnrollmentProgress(user.id, course.id, progressPercent, progressPercent === 100);
+      dataProvider.updateCourseEnrollmentProgress(user.id, course.id, progressPercent, isCourseCompleted);
     }
-  }, [user?.id, course?.id, progressPercent]);
+  }, [user?.id, course?.id, progressPercent, isCourseCompleted]);
 
   // Toggle module accordion
   const toggleModuleAccordion = (modId: string) => {
@@ -842,6 +875,34 @@ export const CourseView: React.FC = () => {
             style={{ width: `${progressPercent}%` }}
           />
         </div>
+
+        {/* Final Exam Status Banner (Shown ONLY if admin created exam for this course) */}
+        {hasCourseExam && allSessionsDone && !isExamPassed && (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-bold">
+              <GraduationCap className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>All curriculum sessions completed ({completedSessionsCount}/{totalSessionsCount})! Complete and pass the Final Exam to reach 100% and earn your verified certificate.</span>
+            </div>
+            <Link to="/student/examinations">
+              <Button size="sm" variant="primary" leftIcon={<GraduationCap className="w-3.5 h-3.5" />} className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold shadow-xs">
+                Final Exam
+              </Button>
+            </Link>
+          </div>
+        )}
+        {hasCourseExam && allSessionsDone && isExamPassed && (
+          <div className="bg-emerald-50 dark:bg-emerald-950/40 border-b border-emerald-200 dark:border-emerald-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200 font-bold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>100% Course Completed! You passed the Final Exam {examAttempt ? `(${examAttempt.score}/${examAttempt.total_marks} — ${examAttempt.percentage}%)` : ''}.</span>
+            </div>
+            <Link to="/student/certificates">
+              <Button size="sm" variant="primary" leftIcon={<Award className="w-3.5 h-3.5" />} className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-xs">
+                View Certificate
+              </Button>
+            </Link>
+          </div>
+        )}
       </header>
 
       {/* ======================================================== */}
@@ -1156,6 +1217,56 @@ export const CourseView: React.FC = () => {
                     );
                   })}
                 </div>
+
+                {/* Final Exam Section in Sidebar (shown ONLY if admin created exam for this course) */}
+                {hasCourseExam && (
+                  <div className="p-4 bg-slate-50/80 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                        <span className="font-extrabold text-xs text-slate-900 dark:text-white">
+                          Course Final Exam
+                        </span>
+                      </div>
+                      {isExamPassed && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          Passed
+                        </span>
+                      )}
+                    </div>
+
+                    {allSessionsDone ? (
+                      isExamPassed ? (
+                        <div className="space-y-1.5 pt-1">
+                          <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                            Completed: {examAttempt?.score}/{examAttempt?.total_marks} ({examAttempt?.percentage}%)
+                          </p>
+                          <Link to="/student/certificates" className="block">
+                            <Button variant="primary" size="sm" className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700" leftIcon={<Award className="w-3.5 h-3.5" />}>
+                              View Certificate
+                            </Button>
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 pt-1">
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Curriculum complete! Complete and pass the Final Exam to reach 100% completion.
+                          </p>
+                          <Link to="/student/examinations" className="block">
+                            <Button variant="primary" size="sm" className="w-full text-xs font-bold" leftIcon={<GraduationCap className="w-3.5 h-3.5" />}>
+                              Final Exam
+                            </Button>
+                          </Link>
+                        </div>
+                      )
+                    ) : (
+                      <p className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
+                        <Lock className="w-3.5 h-3.5 shrink-0" />
+                        <span>Complete all {totalSessionsCount} sessions to unlock Final Exam</span>
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1887,7 +1998,7 @@ export const CourseView: React.FC = () => {
                               <div />
                             )}
 
-                            {!isLastOverallSession && (
+                            {!isLastOverallSession ? (
                               <Button
                                 variant="primary"
                                 size="sm"
@@ -1896,7 +2007,31 @@ export const CourseView: React.FC = () => {
                               >
                                 Next Session →
                               </Button>
-                            )}
+                            ) : hasCourseExam && allSessionsDone ? (
+                              isExamPassed ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                                    <CheckCircle2 className="w-4 h-4" /> Final Exam Passed ({examAttempt?.percentage}%)
+                                  </span>
+                                  <Link to="/student/certificates">
+                                    <Button variant="primary" size="sm" className="bg-emerald-600 hover:bg-emerald-700 font-bold" leftIcon={<Award className="w-4 h-4" />}>
+                                      View Certificate
+                                    </Button>
+                                  </Link>
+                                </div>
+                              ) : (
+                                <Link to="/student/examinations">
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    className="font-extrabold bg-brand-600 hover:bg-brand-700 shadow-md flex items-center gap-1.5"
+                                    leftIcon={<GraduationCap className="w-4 h-4" />}
+                                  >
+                                    Final Exam →
+                                  </Button>
+                                </Link>
+                              )
+                            ) : null}
                           </div>
                         );
                       })()}

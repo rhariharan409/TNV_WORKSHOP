@@ -1285,6 +1285,178 @@ export const dataProvider = {
     }
   },
 
+  async getCourseFinalExam(courseId: string): Promise<Examination | null> {
+    if (!courseId) return null;
+    try {
+      if (isSupabaseConfigured()) {
+        const { data: exams, error } = await supabase
+          .from('examinations')
+          .select('*, course:courses(*), questions:exam_questions(id, marks)')
+          .eq('course_id', courseId)
+          .eq('is_published', true)
+          .order('created_at', { ascending: false });
+
+        if (!error && exams && exams.length > 0) {
+          const e = exams[0];
+          const { cleanInstructions, settings } = this._unpackExamInstructions(e.instructions);
+          const questionsList = e.questions || [];
+          const computedTotalMarks = questionsList.reduce((acc: number, curr: any) => acc + (curr.marks || 2), 0) || e.total_marks || 50;
+          const passingPct = e.passing_percentage ?? settings.passing_percentage ?? 50;
+          const passingMarks = Math.ceil((computedTotalMarks * passingPct) / 100);
+
+          return {
+            ...e,
+            instructions: cleanInstructions,
+            passing_percentage: passingPct,
+            max_attempts: e.max_attempts ?? settings.max_attempts ?? 2,
+            shuffle_questions: e.shuffle_questions ?? settings.shuffle_questions ?? true,
+            show_answer_review: e.show_answer_review ?? settings.show_answer_review ?? false,
+            total_marks: computedTotalMarks,
+            passing_marks: passingMarks,
+          } as Examination;
+        }
+      }
+
+      // Local storage fallback
+      const localExams = getLocalStore<Examination[]>('examinations', []);
+      const match = localExams.find((e) => e.course_id === courseId && e.is_published);
+      return match || null;
+    } catch (e) {
+      console.warn('getCourseFinalExam error:', e);
+      return null;
+    }
+  },
+
+  async getStudentCourseExamStatus(studentId: string, courseId: string): Promise<{
+    hasExam: boolean;
+    exam: Examination | null;
+    isPassed: boolean;
+    latestAttempt: any | null;
+    bestScore: number;
+    bestPercentage: number;
+  }> {
+    if (!studentId || !courseId) {
+      return { hasExam: false, exam: null, isPassed: false, latestAttempt: null, bestScore: 0, bestPercentage: 0 };
+    }
+    try {
+      const exam = await this.getCourseFinalExam(courseId);
+      if (!exam) {
+        return { hasExam: false, exam: null, isPassed: false, latestAttempt: null, bestScore: 0, bestPercentage: 0 };
+      }
+
+      let attempts: any[] = [];
+      if (isSupabaseConfigured()) {
+        const { data: attData } = await supabase
+          .from('exam_attempts')
+          .select('*')
+          .eq('exam_id', exam.id)
+          .eq('student_id', studentId)
+          .order('started_at', { ascending: false });
+
+        attempts = attData || [];
+      }
+      if (attempts.length === 0) {
+        const localAttempts = getLocalStore<any[]>('exam_attempts', []);
+        attempts = localAttempts.filter((a) => a.student_id === studentId && (a.exam_id === exam.id || a.examination_id === exam.id));
+      }
+
+      const passedAttempt = attempts.find(
+        (a) => a.is_passed || (a.status === 'evaluated' && (a.percentage || 0) >= (exam.passing_percentage || 50))
+      );
+      const latestAttempt = attempts[0] || null;
+      const bestAttempt = [...attempts].sort((a, b) => (b.percentage || 0) - (a.percentage || 0))[0] || null;
+
+      return {
+        hasExam: true,
+        exam,
+        isPassed: Boolean(passedAttempt),
+        latestAttempt,
+        bestScore: bestAttempt ? Number(bestAttempt.score || 0) : 0,
+        bestPercentage: bestAttempt ? Number(bestAttempt.percentage || 0) : 0,
+      };
+    } catch (e) {
+      console.warn('getStudentCourseExamStatus error:', e);
+      return { hasExam: false, exam: null, isPassed: false, latestAttempt: null, bestScore: 0, bestPercentage: 0 };
+    }
+  },
+
+  async syncCourseProgressWithExam(studentId: string, courseId: string): Promise<{
+    progressPercentage: number;
+    isCompleted: boolean;
+    hasExam: boolean;
+    isExamPassed: boolean;
+  }> {
+    if (!studentId || !courseId) {
+      return { progressPercentage: 0, isCompleted: false, hasExam: false, isExamPassed: false };
+    }
+    try {
+      // 1. Get all session IDs for this course
+      let allSessions: any[] = [];
+      if (isSupabaseConfigured()) {
+        const { data: mods } = await supabase
+          .from('modules')
+          .select('id, sessions(id)')
+          .eq('course_id', courseId);
+        (mods || []).forEach((m: any) => {
+          (m.sessions || []).forEach((s: any) => allSessions.push(s.id));
+        });
+      }
+
+      // 2. Get student's completed sessions
+      let completedSessions: any[] = [];
+      if (isSupabaseConfigured() && allSessions.length > 0) {
+        const { data: prog } = await supabase
+          .from('session_progress')
+          .select('session_id')
+          .eq('student_id', studentId)
+          .eq('is_completed', true)
+          .in('session_id', allSessions);
+        completedSessions = prog || [];
+      }
+
+      const totalSessions = allSessions.length;
+      const completedCount = completedSessions.length;
+      const allSessionsDone = totalSessions > 0 ? completedCount >= totalSessions : true;
+
+      // 3. Check exam status
+      const examStatus = await this.getStudentCourseExamStatus(studentId, courseId);
+
+      let progressPercentage = 0;
+      let isCompleted = false;
+
+      if (!examStatus.hasExam) {
+        // Course without final exam: follow current method (100% when all sessions completed)
+        progressPercentage = totalSessions > 0 ? Math.round((completedCount / totalSessions) * 100) : 100;
+        isCompleted = allSessionsDone && totalSessions > 0;
+      } else {
+        // Course with final exam: 100% ONLY when sessions completed AND final exam passed!
+        if (allSessionsDone && examStatus.isPassed) {
+          progressPercentage = 100;
+          isCompleted = true;
+        } else if (allSessionsDone && !examStatus.isPassed) {
+          progressPercentage = 80;
+          isCompleted = false;
+        } else {
+          progressPercentage = totalSessions > 0 ? Math.round((completedCount / totalSessions) * 80) : 0;
+          isCompleted = false;
+        }
+      }
+
+      // 4. Update enrollment progress
+      await this.updateCourseEnrollmentProgress(studentId, courseId, progressPercentage, isCompleted);
+
+      return {
+        progressPercentage,
+        isCompleted,
+        hasExam: examStatus.hasExam,
+        isExamPassed: examStatus.isPassed,
+      };
+    } catch (e) {
+      console.warn('syncCourseProgressWithExam error:', e);
+      return { progressPercentage: 0, isCompleted: false, hasExam: false, isExamPassed: false };
+    }
+  },
+
   async checkCourseCertificateEligibility(studentId: string, courseId: string) {
     if (isSupabaseConfigured()) {
       const { data, error } = await supabase.rpc('check_course_certificate_eligibility', {
@@ -1317,7 +1489,7 @@ export const dataProvider = {
             .from('exam_attempts')
             .select('percentage, score, total_marks, is_passed')
             .eq('student_id', studentId)
-            .in('examination_id', examIds)
+            .in('exam_id', examIds)
             .order('percentage', { ascending: false });
 
           if (attempts && attempts.length > 0 && attempts[0].percentage !== null && attempts[0].percentage !== undefined) {

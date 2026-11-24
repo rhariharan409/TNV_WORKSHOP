@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
-import { Award, Download, ShieldCheck, XCircle, CheckCircle2, Search, Filter, BookOpen, Sliders, AlertTriangle } from 'lucide-react';
+import { Award, Download, ShieldCheck, XCircle, CheckCircle2, Search, Filter, BookOpen, Sliders, AlertTriangle, Sparkles, Eye, Clock, GraduationCap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const AdminCertificates: React.FC = () => {
@@ -22,6 +22,8 @@ export const AdminCertificates: React.FC = () => {
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
   const [courseEnrollments, setCourseEnrollments] = useState<CourseEnrollment[]>([]);
+  const [examinations, setExaminations] = useState<any[]>([]);
+  const [examAttempts, setExamAttempts] = useState<any[]>([]);
   const [revokeModalCert, setRevokeModalCert] = useState<Certificate | null>(null);
   const [revokeReason, setRevokeReason] = useState('');
   const [forceIssueModalData, setForceIssueModalData] = useState<{
@@ -32,6 +34,14 @@ export const AdminCertificates: React.FC = () => {
     realScore: number;
     threshold: number;
   } | null>(null);
+  const [reviewModalData, setReviewModalData] = useState<{
+    enr: CourseEnrollment;
+    courseExam: any | null;
+    passedAttempt: any | null;
+    latestAttempt: any | null;
+    progress: number;
+    isEligible: boolean;
+  } | null>(null);
   const [courseMinThreshold, setCourseMinThreshold] = useState<number>(50);
   const [thresholdSavedNotice, setThresholdSavedNotice] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -40,16 +50,20 @@ export const AdminCertificates: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [cList, courseList, wList, allCourseEnrs] = await Promise.all([
+      const [cList, courseList, wList, allCourseEnrs, allExams, allAttempts] = await Promise.all([
         dataProvider.getCertificates(adminId),
         dataProvider.getCourses({ adminId }),
         dataProvider.getWorkshops(adminId),
         dataProvider.getCourseEnrollments(undefined, undefined, adminId),
+        dataProvider.getExaminations(undefined, adminId).catch(() => []),
+        dataProvider.getExamAttempts(undefined, adminId).catch(() => []),
       ]);
       setCertificates(cList);
       setCourses(courseList);
       setWorkshops(wList);
       setCourseEnrollments(allCourseEnrs);
+      setExaminations(allExams || []);
+      setExamAttempts(allAttempts || []);
     } catch (err) {
       console.error('Failed to load certificates data:', err);
     } finally {
@@ -368,39 +382,117 @@ export const AdminCertificates: React.FC = () => {
                 (c) => c.student_id === enr.student_id && c.course_id === enr.course_id && c.status === 'issued'
               );
               const progress = enr.progress_percentage || 0;
-              const isEligible = progress >= 100 || enr.is_completed;
               const threshold = dataProvider.getCourseMinThreshold(enr.course_id);
               const canForceIssue = progress >= threshold;
+
+              const courseExam = examinations.find(
+                (e) => e.course_id === enr.course_id && e.is_published
+              );
+              const isExamCourse = Boolean(courseExam);
+
+              const studentAttempts = examAttempts.filter(
+                (a) =>
+                  a.student_id === enr.student_id &&
+                  (a.exam_id === courseExam?.id || a.examination_id === courseExam?.id)
+              );
+              const passedAttempt = studentAttempts.find(
+                (a) =>
+                  a.is_passed ||
+                  (a.status === 'evaluated' &&
+                    (a.percentage || 0) >= (courseExam?.passing_percentage || 50))
+              );
+              const latestAttempt = studentAttempts[0] || null;
+
+              // Rule:
+              // - If course has exam: 100% completion requires passing final exam AND curriculum sessions done
+              // - If course has no exam: follow current method (100% when sessions done)
+              const isEligible = isExamCourse
+                ? Boolean(passedAttempt) && (progress >= 100 || enr.is_completed)
+                : progress >= 100 || enr.is_completed;
+
+              const certScore = passedAttempt ? passedAttempt.percentage : progress;
 
               return (
                 <div
                   key={enr.id}
                   className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h4 className="font-bold text-slate-900 dark:text-white text-sm">
                         {enr.student?.full_name || 'Enrolled Student'}
                       </h4>
                       <span className="text-[10px] text-slate-400 font-mono">
                         {enr.student?.email}
                       </span>
+                      {isEligible && !alreadyHas && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white flex items-center gap-1 shadow-xs animate-pulse">
+                          <Sparkles className="w-3 h-3" /> Recommended for Certification
+                        </span>
+                      )}
                     </div>
+
                     <p className="text-slate-500">
                       Course: <strong>{enr.course?.title}</strong> • Progress: <strong>{progress}%</strong> ({enr.completed_sessions || 0}/{enr.total_sessions || 0} sessions)
                     </p>
+
+                    {/* Final Exam Performance Indicator */}
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      {isExamCourse ? (
+                        passedAttempt ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            Final Exam: Passed {passedAttempt.score}/{passedAttempt.total_marks} ({passedAttempt.percentage}%)
+                          </span>
+                        ) : latestAttempt ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                            Final Exam: Failed ({latestAttempt.score}/{latestAttempt.total_marks} — {latestAttempt.percentage}%)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
+                            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            Final Exam: Pending Attempt
+                          </span>
+                        )
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                          <BookOpen className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          No Final Exam (Standard Curriculum Track)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setReviewModalData({
+                          enr,
+                          courseExam,
+                          passedAttempt,
+                          latestAttempt,
+                          progress,
+                          isEligible,
+                        })
+                      }
+                      leftIcon={<Eye className="w-3.5 h-3.5" />}
+                    >
+                      Review
+                    </Button>
+
                     {alreadyHas ? (
                       <Badge variant="success">Certificate Active</Badge>
                     ) : isEligible ? (
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={() => handleIssueCourseCert(enr.student_id, enr.course_id, progress, false)}
+                        onClick={() => handleIssueCourseCert(enr.student_id, enr.course_id, certScore, false)}
                         leftIcon={<Award className="w-3.5 h-3.5" />}
                         disabled={isProcessing}
+                        className="bg-emerald-600 hover:bg-emerald-700 shadow-sm font-bold"
                       >
                         Approve & Issue Certificate
                       </Button>
@@ -443,6 +535,176 @@ export const AdminCertificates: React.FC = () => {
           )}
         </div>
       </Card>
+
+      {/* Academic & Certification Review Modal */}
+      <Modal
+        isOpen={Boolean(reviewModalData)}
+        onClose={() => setReviewModalData(null)}
+        title="Student Academic Record & Certification Review"
+        description="Comprehensive review of course curriculum completion and proctored examination telemetry"
+        maxWidth="lg"
+      >
+        {reviewModalData && (
+          <div className="space-y-5 text-xs">
+            {/* Student Profile Info */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">
+                  {reviewModalData.enr.student?.full_name}
+                </h4>
+                <p className="text-slate-500 text-[11px]">
+                  {reviewModalData.enr.student?.email} • {reviewModalData.enr.student?.college_name || 'Engineering College'} ({reviewModalData.enr.student?.department || 'Information Technology'})
+                </p>
+              </div>
+              <Badge variant={reviewModalData.isEligible ? 'success' : 'warning'}>
+                {reviewModalData.isEligible ? 'Recommended for Certification' : 'Requirements Pending'}
+              </Badge>
+            </div>
+
+            {/* Curriculum Progress Breakdown */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <BookOpen className="w-4 h-4 text-brand-600" />
+                  Course Curriculum Modules & Sessions
+                </span>
+                <span className="font-extrabold text-brand-600 dark:text-brand-400">
+                  {reviewModalData.progress}% Progress
+                </span>
+              </div>
+              <p className="text-slate-500">
+                Course: <strong>{reviewModalData.enr.course?.title}</strong>
+              </p>
+              <div className="grid grid-cols-2 gap-3 pt-1 text-slate-600 dark:text-slate-300">
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Completed Sessions</span>
+                  <span className="font-bold text-sm text-slate-900 dark:text-white">
+                    {reviewModalData.enr.completed_sessions || 0} / {reviewModalData.enr.total_sessions || 0}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Curriculum Status</span>
+                  <span className="font-bold text-sm text-slate-900 dark:text-white">
+                    {(reviewModalData.enr.completed_sessions || 0) >= (reviewModalData.enr.total_sessions || 1)
+                      ? 'All Sessions Completed'
+                      : 'In Progress'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Proctored Final Exam Performance Breakdown */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <GraduationCap className="w-4 h-4 text-purple-600" />
+                  Proctored Technical Examination Performance
+                </span>
+                {reviewModalData.courseExam ? (
+                  <Badge variant={reviewModalData.passedAttempt ? 'success' : 'destructive'}>
+                    {reviewModalData.passedAttempt ? 'Exam Passed' : reviewModalData.latestAttempt ? 'Exam Failed' : 'Not Attempted'}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">No Exam Required</Badge>
+                )}
+              </div>
+
+              {reviewModalData.courseExam ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Exam Title</span>
+                      <span className="font-extrabold text-slate-900 dark:text-white truncate block">
+                        {reviewModalData.courseExam.title}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Passing Benchmark</span>
+                      <span className="font-extrabold text-slate-900 dark:text-white block">
+                        {reviewModalData.courseExam.passing_percentage ?? 50}% ({reviewModalData.courseExam.passing_marks} Marks)
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Marks Scored</span>
+                      <span className="font-extrabold text-slate-900 dark:text-white block">
+                        {reviewModalData.latestAttempt
+                          ? `${reviewModalData.latestAttempt.score} / ${reviewModalData.latestAttempt.total_marks}`
+                          : 'N/A'}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Student Score %</span>
+                      <span className={`font-black text-sm block ${reviewModalData.passedAttempt ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {reviewModalData.latestAttempt ? `${reviewModalData.latestAttempt.percentage}%` : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {reviewModalData.latestAttempt && (
+                    <p className="text-[11px] text-slate-400">
+                      Submitted on: {formatDate(reviewModalData.latestAttempt.submitted_at || reviewModalData.latestAttempt.started_at)} • Tab switches recorded: {reviewModalData.latestAttempt.tab_switches ?? 0}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-slate-500 text-xs">
+                  This course operates under the Standard Curriculum Track with no final examination requirement. Certificate eligibility is verified once all course lectures and modules reach 100% completion.
+                </p>
+              )}
+            </div>
+
+            {/* Recommendation Decision Box */}
+            <div className={`p-4 rounded-2xl border ${reviewModalData.isEligible ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'}`}>
+              <h5 className="font-bold text-xs flex items-center gap-1.5 mb-1">
+                {reviewModalData.isEligible ? (
+                  <>
+                    <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Recommended for Official Certification
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    Certification Requirements Pending
+                  </>
+                )}
+              </h5>
+              <p className="text-[11px]">
+                {reviewModalData.isEligible
+                  ? `Student has satisfied 100% of academic criteria${reviewModalData.courseExam ? ` and achieved a passing score of ${reviewModalData.passedAttempt?.percentage}% on the proctored examination` : ''}. You may approve and issue the verifiable certificate.`
+                  : reviewModalData.courseExam
+                  ? 'Student must complete all curriculum lectures and score above the passing benchmark on the final examination to earn 100% completion.'
+                  : 'Student must complete all curriculum lectures to reach 100% completion.'}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <Button variant="outline" size="sm" onClick={() => setReviewModalData(null)}>
+                Close
+              </Button>
+              {reviewModalData.isEligible && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    const studentId = reviewModalData.enr.student_id;
+                    const courseId = reviewModalData.enr.course_id;
+                    const certScore = reviewModalData.passedAttempt ? reviewModalData.passedAttempt.percentage : reviewModalData.progress;
+                    setReviewModalData(null);
+                    handleIssueCourseCert(studentId, courseId, certScore, false);
+                  }}
+                  leftIcon={<Award className="w-3.5 h-3.5" />}
+                  className="bg-emerald-600 hover:bg-emerald-700 font-bold"
+                >
+                  Approve & Issue Certificate
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Force Issue Confirmation Modal */}
       <Modal

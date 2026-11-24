@@ -299,10 +299,22 @@ export const AdminDashboard: React.FC = () => {
                         const studentSubs = (courseActivityData?.submissions || []).filter(
                           (s) => s.student_id === enr.student_id
                         );
-                        const studentAttempts = (courseActivityData?.attempts || []).filter(
-                          (a) => a.student_id === enr.student_id
+                        const courseExam = (courseActivityData?.exams || []).find(
+                          (e) => (e.course_id === selectedCourseId || e.course?.id === selectedCourseId) && e.is_published
                         );
-                        const isEligible = (enr.progress_percentage || 0) >= 75;
+                        const isExamCourse = Boolean(courseExam);
+
+                        const studentAttempts = (courseActivityData?.attempts || []).filter(
+                          (a) => a.student_id === enr.student_id && (!courseExam || a.exam_id === courseExam.id || a.examination_id === courseExam.id)
+                        );
+                        const passedAttempt = studentAttempts.find(
+                          (a) => a.is_passed || (a.status === 'evaluated' && (a.percentage || 0) >= (courseExam?.passing_percentage || 50))
+                        );
+                        const latestAttempt = studentAttempts[0] || null;
+
+                        const isEligible = isExamCourse
+                          ? Boolean(passedAttempt) && ((enr.progress_percentage || 0) >= 100 || enr.is_completed)
+                          : (enr.progress_percentage || 0) >= 100 || enr.is_completed;
 
                         return (
                           <tr key={enr.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
@@ -329,16 +341,54 @@ export const AdminDashboard: React.FC = () => {
                               </span>
                             </td>
 
+                            {/* Exams Column with Real Final Exam Scores & Performance */}
                             <td className="p-3 whitespace-nowrap">
-                              <span className="font-semibold text-slate-900 dark:text-white">
-                                {studentAttempts.length} Attempts
-                              </span>
+                              {isExamCourse ? (
+                                passedAttempt ? (
+                                  <div className="space-y-0.5">
+                                    <span className="font-extrabold text-emerald-600 dark:text-emerald-400 block text-xs">
+                                      {passedAttempt.score} / {passedAttempt.total_marks} ({passedAttempt.percentage}%)
+                                    </span>
+                                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                      Passed Benchmark
+                                    </span>
+                                  </div>
+                                ) : latestAttempt ? (
+                                  <div className="space-y-0.5">
+                                    <span className="font-bold text-rose-600 dark:text-rose-400 block text-xs">
+                                      {latestAttempt.score} / {latestAttempt.total_marks} ({latestAttempt.percentage}%)
+                                    </span>
+                                    <span className="text-[10px] font-bold text-rose-600">
+                                      Needs Retake
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 text-xs">Pending Attempt</span>
+                                )
+                              ) : (
+                                <span className="text-slate-400 text-xs">No Exam Track</span>
+                              )}
                             </td>
 
+                            {/* Certificate Eligibility Column */}
                             <td className="p-3 whitespace-nowrap">
-                              <Badge variant={isEligible ? 'success' : 'warning'}>
-                                {isEligible ? 'Criteria Satisfied' : 'Requirements Pending'}
-                              </Badge>
+                              <div className="space-y-1">
+                                <Badge variant={isEligible ? 'success' : 'warning'}>
+                                  {isEligible
+                                    ? 'Recommended for Certification'
+                                    : isExamCourse && !passedAttempt && (enr.progress_percentage || 0) >= 80
+                                    ? 'Final Exam Pending'
+                                    : 'Requirements Pending'}
+                                </Badge>
+                                {isEligible && (
+                                  <Link
+                                    to="/admin/certificates"
+                                    className="text-[10px] text-brand-600 dark:text-brand-400 hover:underline block font-bold"
+                                  >
+                                    Review & Issue Credential →
+                                  </Link>
+                                )}
+                              </div>
                             </td>
 
                             <td className="p-3 whitespace-nowrap text-slate-400">
