@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dataProvider } from '../../lib/dataProvider';
 import { Course, Module, Session } from '../../types/database';
-import { parseGoogleDriveLink } from '../../lib/utils';
+import { parseGoogleDriveLink, isValidGoogleDriveUrl } from '../../lib/utils';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -532,6 +532,29 @@ export const AdminCourseCreate: React.FC = () => {
     if (!sessionTitleToUse.trim()) {
       alert('Please enter a session or assessment title.');
       return;
+    }
+
+    // Drive Link Validation: accept only URLs matching https://drive.google.com/file/d/<id>/..., https://drive.google.com/open?id=<id>, or https://docs.google.com/...
+    if (activeContentType === 'document') {
+      if (!newSessionDriveUrl.trim() || !isValidGoogleDriveUrl(newSessionDriveUrl)) {
+        alert('Please enter a valid Google Drive link.');
+        return;
+      }
+    } else if (newSessionDriveUrl.trim() && !isValidGoogleDriveUrl(newSessionDriveUrl)) {
+      alert('Please enter a valid Google Drive link.');
+      return;
+    }
+
+    if (activeContentType === 'video') {
+      for (const v of videoLinks) {
+        if (v && v.url && v.url.trim()) {
+          const urlTrimmed = v.url.trim();
+          if ((urlTrimmed.includes('drive.google.com') || urlTrimmed.includes('docs.google.com')) && !isValidGoogleDriveUrl(urlTrimmed)) {
+            alert('Please enter a valid Google Drive link.');
+            return;
+          }
+        }
+      }
     }
 
     setIsSaving(true);
@@ -1667,23 +1690,17 @@ export const AdminCourseCreate: React.FC = () => {
                       {/* Drive Link Validation Feedback */}
                       {newSessionDriveUrl && (
                         <div className="text-[11px] flex items-center gap-2 font-medium">
-                          {(() => {
-                            const parsed = parseGoogleDriveLink(newSessionDriveUrl);
-                            if (parsed.isValid) {
-                              return (
-                                <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-semibold">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  Detected valid Google Drive {parsed.type} ID: {parsed.id}
-                                </span>
-                              );
-                            }
-                            return (
-                              <span className="text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                                <AlertTriangle className="w-3.5 h-3.5" />
-                                Valid URL stored. Ensure access permissions allow students to view.
-                              </span>
-                            );
-                          })()}
+                          {isValidGoogleDriveUrl(newSessionDriveUrl) ? (
+                            <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Valid Google Drive link.
+                            </span>
+                          ) : (
+                            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1 font-semibold">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              Please enter a valid Google Drive link.
+                            </span>
+                          )}
                         </div>
                       )}
 

@@ -24,6 +24,7 @@ import {
   LiveSession,
   Attendance,
   Certificate,
+  CertificateTemplate,
   Feedback,
   Notification,
   AdminSettings,
@@ -1298,9 +1299,99 @@ export const dataProvider = {
     return { is_eligible: false };
   },
 
-  async issueCourseCertificate(studentId: string, courseId: string, issuedBy?: string, overallScore?: number): Promise<any> {
-    const finalScore = Number(overallScore) > 0 ? Number(overallScore) : 95;
-    const finalGrade = finalScore >= 90 ? 'A+' : finalScore >= 80 ? 'A' : finalScore >= 70 ? 'B+' : 'B';
+  async getStudentCourseRealScore(studentId: string, courseId: string): Promise<number> {
+    if (!studentId || !courseId) return 0;
+    try {
+      if (isSupabaseConfigured()) {
+        // 1. Check if student has taken any examinations for this course
+        const { data: exams } = await supabase
+          .from('examinations')
+          .select('id')
+          .eq('course_id', courseId);
+
+        if (exams && exams.length > 0) {
+          const examIds = exams.map((e) => e.id);
+          const { data: attempts } = await supabase
+            .from('exam_attempts')
+            .select('percentage, score, total_marks, is_passed')
+            .eq('student_id', studentId)
+            .in('examination_id', examIds)
+            .order('percentage', { ascending: false });
+
+          if (attempts && attempts.length > 0 && attempts[0].percentage !== null && attempts[0].percentage !== undefined) {
+            return Math.round(Number(attempts[0].percentage));
+          }
+        }
+
+        // 2. Check assignment submissions for this course
+        const { data: modules } = await supabase
+          .from('modules')
+          .select('id, sessions(id, session_type)')
+          .eq('course_id', courseId);
+
+        if (modules && modules.length > 0) {
+          const sessionIds: string[] = [];
+          modules.forEach((m: any) => {
+            (m.sessions || []).forEach((s: any) => {
+              sessionIds.push(s.id);
+            });
+          });
+
+          if (sessionIds.length > 0) {
+            const { data: subs } = await supabase
+              .from('assignment_submissions')
+              .select('marks_obtained')
+              .eq('student_id', studentId);
+
+            if (subs && subs.length > 0) {
+              const scored = subs.filter((s) => s.marks_obtained !== null && s.marks_obtained !== undefined);
+              if (scored.length > 0) {
+                const total = scored.reduce((acc, curr) => acc + Number(curr.marks_obtained), 0);
+                return Math.round(total / scored.length);
+              }
+            }
+          }
+        }
+
+        // 3. Fallback to course enrollment progress_percentage
+        const { data: enr } = await supabase
+          .from('course_enrollments')
+          .select('progress_percentage')
+          .eq('student_id', studentId)
+          .eq('course_id', courseId)
+          .maybeSingle();
+
+        if (enr && enr.progress_percentage !== null && enr.progress_percentage !== undefined) {
+          return Math.round(Number(enr.progress_percentage));
+        }
+      }
+    } catch (e) {
+      console.warn('Error computing real score from Supabase:', e);
+    }
+
+    // Local storage fallback
+    const localEnrs = getLocalStore<CourseEnrollment[]>('course_enrollments', []);
+    const enr = localEnrs.find((e) => e.student_id === studentId && e.course_id === courseId);
+    if (enr && enr.progress_percentage !== undefined && enr.progress_percentage !== null) {
+      return Math.round(enr.progress_percentage);
+    }
+    return 0;
+  },
+
+  async issueCourseCertificate(
+    studentId: string,
+    courseId: string,
+    issuedBy?: string,
+    overallScore?: number,
+    isForceIssued: boolean = false
+  ): Promise<any> {
+    let finalScore: number;
+    if (overallScore !== undefined && overallScore !== null && !isNaN(Number(overallScore)) && Number(overallScore) > 0) {
+      finalScore = Math.round(Number(overallScore));
+    } else {
+      finalScore = await this.getStudentCourseRealScore(studentId, courseId);
+    }
+    const finalGrade = finalScore >= 90 ? 'A+' : finalScore >= 80 ? 'A' : finalScore >= 70 ? 'B+' : finalScore >= 50 ? 'B' : 'C';
     const certNumber = `TNV-${new Date().getFullYear()}-C${Math.floor(100000 + Math.random() * 900000)}`;
     const today = new Date().toISOString().split('T')[0];
 
@@ -1342,8 +1433,20 @@ export const dataProvider = {
           p_overall_score: finalScore,
         });
         if (!error && data && data.success !== false && (data.certificate_id || data.certificate_number)) {
+          const certId = data.certificate_id || `cert-${Date.now()}`;
+          // Persist is_force_issued and real score
+          try {
+            await supabase.from('certificates').update({
+              is_force_issued: isForceIssued,
+              overall_score: finalScore,
+              grade: finalGrade,
+            }).eq('id', certId);
+          } catch (updateErr) {
+            console.warn('Could not update is_force_issued on certificate:', updateErr);
+          }
+
           const rpcCert: Certificate = {
-            id: data.certificate_id || `cert-${Date.now()}`,
+            id: certId,
             certificate_number: data.certificate_number || certNumber,
             student_id: studentId,
             course_id: courseId,
@@ -1354,6 +1457,7 @@ export const dataProvider = {
             issued_by: adminId || null,
             overall_score: finalScore,
             grade: finalGrade,
+            is_force_issued: isForceIssued,
             created_at: new Date().toISOString(),
             student: studentProfile || undefined,
             course: courseInfo || undefined,
@@ -1371,7 +1475,7 @@ export const dataProvider = {
             'course_enrollments',
             localEnrs.map((e) =>
               e.student_id === studentId && e.course_id === courseId
-                ? { ...e, is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() }
+                ? { ...e, is_completed: true, progress_percentage: isForceIssued ? (e.progress_percentage || finalScore) : 100, completed_at: new Date().toISOString() }
                 : e
             )
           );
@@ -1392,18 +1496,30 @@ export const dataProvider = {
         .maybeSingle();
 
       if (existingCert) {
-        await supabase
-          .from('certificates')
-          .update({
-            status: 'issued',
-            overall_score: finalScore,
-            grade: finalGrade,
-          })
-          .eq('id', existingCert.id);
+        try {
+          await supabase
+            .from('certificates')
+            .update({
+              status: 'issued',
+              overall_score: finalScore,
+              grade: finalGrade,
+              is_force_issued: isForceIssued,
+            })
+            .eq('id', existingCert.id);
+        } catch {
+          await supabase
+            .from('certificates')
+            .update({
+              status: 'issued',
+              overall_score: finalScore,
+              grade: finalGrade,
+            })
+            .eq('id', existingCert.id);
+        }
 
         await supabase
           .from('course_enrollments')
-          .update({ is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() })
+          .update({ is_completed: true, progress_percentage: isForceIssued ? (existingCert.progress_percentage || finalScore) : 100, completed_at: new Date().toISOString() })
           .eq('student_id', studentId)
           .eq('course_id', courseId);
 
@@ -1412,6 +1528,7 @@ export const dataProvider = {
           status: 'issued',
           overall_score: finalScore,
           grade: finalGrade,
+          is_force_issued: isForceIssued,
         };
 
         const localCerts = getLocalStore<Certificate[]>('certificates', []);
@@ -1433,8 +1550,10 @@ export const dataProvider = {
         issued_by: adminId || null,
         overall_score: finalScore,
         grade: finalGrade,
+        is_force_issued: isForceIssued,
       };
 
+      let insertedCert: any = null;
       const { data: inserted, error: insErr } = await supabase
         .from('certificates')
         .insert(payload)
@@ -1442,13 +1561,21 @@ export const dataProvider = {
         .maybeSingle();
 
       if (insErr) {
-        console.warn('Direct insert into certificates table had warning:', insErr.message);
+        delete payload.is_force_issued;
+        const { data: retryInsert } = await supabase
+          .from('certificates')
+          .insert(payload)
+          .select('*, student:profiles(*), course:courses(*)')
+          .maybeSingle();
+        insertedCert = retryInsert;
+      } else {
+        insertedCert = inserted;
       }
 
       // Update course_enrollments in Supabase
       await supabase
         .from('course_enrollments')
-        .update({ is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() })
+        .update({ is_completed: true, progress_percentage: isForceIssued ? finalScore : 100, completed_at: new Date().toISOString() })
         .eq('student_id', studentId)
         .eq('course_id', courseId);
 
@@ -1466,8 +1593,8 @@ export const dataProvider = {
       }
 
       const certResult: Certificate = {
-        id: inserted?.id || `cert-${Date.now()}`,
-        certificate_number: inserted?.certificate_number || certNumber,
+        id: insertedCert?.id || `cert-${Date.now()}`,
+        certificate_number: insertedCert?.certificate_number || certNumber,
         student_id: studentId,
         course_id: courseId,
         workshop_id: targetWorkshopId || null,
@@ -1477,9 +1604,10 @@ export const dataProvider = {
         issued_by: adminId || null,
         overall_score: finalScore,
         grade: finalGrade,
+        is_force_issued: isForceIssued,
         created_at: new Date().toISOString(),
-        student: inserted?.student || studentProfile || undefined,
-        course: inserted?.course || courseInfo || undefined,
+        student: insertedCert?.student || studentProfile || undefined,
+        course: insertedCert?.course || courseInfo || undefined,
       };
 
       const localCerts = getLocalStore<Certificate[]>('certificates', []);
@@ -1493,7 +1621,7 @@ export const dataProvider = {
         'course_enrollments',
         localEnrs.map((e) =>
           e.student_id === studentId && e.course_id === courseId
-            ? { ...e, is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() }
+            ? { ...e, is_completed: true, progress_percentage: isForceIssued ? (e.progress_percentage || finalScore) : 100, completed_at: new Date().toISOString() }
             : e
         )
       );
@@ -1526,6 +1654,7 @@ export const dataProvider = {
       issued_by: issuedBy || 'admin-system',
       overall_score: finalScore,
       grade: finalGrade,
+      is_force_issued: isForceIssued,
       created_at: new Date().toISOString(),
       student: studentProfile,
       course: courseInfo,
@@ -1543,7 +1672,7 @@ export const dataProvider = {
       'course_enrollments',
       localEnrs.map((e) =>
         e.student_id === studentId && e.course_id === courseId
-          ? { ...e, is_completed: true, progress_percentage: 100, completed_at: new Date().toISOString() }
+          ? { ...e, is_completed: true, progress_percentage: isForceIssued ? (e.progress_percentage || finalScore) : 100, completed_at: new Date().toISOString() }
           : e
       )
     );
@@ -1729,7 +1858,7 @@ export const dataProvider = {
                 title: s.title,
                 moduleName: m.title || `Module ${mIdx + 1}`,
                 repoUrl: repoUrl || (isSessDone ? 'Submitted in Course Portal' : 'Pending Submission'),
-                marksObtained: sub?.marks_obtained !== undefined && sub?.marks_obtained !== null ? sub.marks_obtained : 95,
+                marksObtained: sub?.marks_obtained !== undefined && sub?.marks_obtained !== null ? sub.marks_obtained : (isSessDone ? 100 : 0),
                 maxMarks: 100,
                 status: sub?.status || 'evaluated',
                 submittedAt: sub?.submitted_at || enr.enrolled_at,
@@ -1810,7 +1939,7 @@ export const dataProvider = {
             title: 'CREATE AN HTML PAGE',
             moduleName: 'Module 1: Introduction to HTML',
             repoUrl: studentRepo || 'Submitted in Course Portal',
-            marksObtained: 95,
+            marksObtained: 100,
             maxMarks: 100,
             status: 'evaluated',
             submittedAt: enr.enrolled_at,
@@ -2453,17 +2582,74 @@ export const dataProvider = {
     throw new Error('Supabase is not configured');
   },
 
-  async getExaminations(courseId?: string, adminId?: string): Promise<Examination[]> {
+  // Helper to pack extended exam settings into instructions text safely
+  _packExamInstructions(
+    instructionsText: string | null | undefined,
+    settings: {
+      passing_percentage?: number;
+      max_attempts?: number;
+      shuffle_questions?: boolean;
+      show_answer_review?: boolean;
+    }
+  ): string {
+    const base = (instructionsText || '').replace(/\n?---EXAM_CONFIG---\n[\s\S]*?\n---END_EXAM_CONFIG---/g, '').trim();
+    const configBlock = `\n\n---EXAM_CONFIG---\n${JSON.stringify(settings)}\n---END_EXAM_CONFIG---`;
+    return (base + configBlock).trim();
+  },
+
+  _unpackExamInstructions(instructionsText: string | null | undefined): {
+    cleanInstructions: string;
+    settings: {
+      passing_percentage?: number;
+      max_attempts?: number;
+      shuffle_questions?: boolean;
+      show_answer_review?: boolean;
+    };
+  } {
+    if (!instructionsText) return { cleanInstructions: '', settings: {} };
+    const match = instructionsText.match(/---EXAM_CONFIG---\n([\s\S]*?)\n---END_EXAM_CONFIG---/);
+    if (!match) return { cleanInstructions: instructionsText, settings: {} };
+    try {
+      const settings = JSON.parse(match[1]);
+      const cleanInstructions = instructionsText.replace(match[0], '').trim();
+      return { cleanInstructions, settings };
+    } catch {
+      return { cleanInstructions: instructionsText, settings: {} };
+    }
+  },
+
+  async getExaminations(courseId?: string, adminId?: string, includeDrafts: boolean = true): Promise<Examination[]> {
     if (isSupabaseConfigured()) {
-      let q = supabase.from('examinations').select('*, course:courses(*)');
+      let q = supabase
+        .from('examinations')
+        .select('*, course:courses(*), questions:exam_questions(id, marks)');
       if (courseId) q = q.eq('course_id', courseId);
-      const { data, error } = await q.eq('is_published', true).order('created_at', { ascending: false });
+      if (!includeDrafts) q = q.eq('is_published', true);
+      const { data, error } = await q.order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching examinations from Supabase:', error);
         throw new Error(`Failed to load examinations: ${error.message}`);
       }
-      let list = (data || []) as Examination[];
+      let list = (data || []).map((e: any) => {
+        const { cleanInstructions, settings } = this._unpackExamInstructions(e.instructions);
+        const questionsList = e.questions || [];
+        const computedTotalMarks = questionsList.reduce((acc: number, curr: any) => acc + (curr.marks || 2), 0) || e.total_marks || 50;
+        const passingPct = e.passing_percentage ?? settings.passing_percentage ?? 50;
+        const passingMarks = Math.ceil((computedTotalMarks * passingPct) / 100);
+
+        return {
+          ...e,
+          instructions: cleanInstructions,
+          passing_percentage: passingPct,
+          max_attempts: e.max_attempts ?? settings.max_attempts ?? 2,
+          shuffle_questions: e.shuffle_questions ?? settings.shuffle_questions ?? true,
+          show_answer_review: e.show_answer_review ?? settings.show_answer_review ?? false,
+          total_marks: computedTotalMarks,
+          passing_marks: passingMarks,
+        } as Examination;
+      });
+
       if (adminId) {
         list = list.filter((e: any) => !e.course?.created_by || e.course?.created_by === adminId);
       }
@@ -2474,32 +2660,163 @@ export const dataProvider = {
 
   async createExamination(exam: Partial<Examination>): Promise<Examination> {
     if (isSupabaseConfigured()) {
-      const { data, error } = await supabase
-        .from('examinations')
-        .insert({
-          course_id: exam.course_id,
-          title: exam.title,
-          description: exam.description,
-          instructions: exam.instructions,
-          duration_minutes: exam.duration_minutes || 60,
-          total_marks: exam.total_marks || 50,
-          passing_marks: exam.passing_marks || 25,
-          is_published: true,
-        })
-        .select('*, course:courses(*)')
-        .single();
+      const passingPct = exam.passing_percentage !== undefined ? exam.passing_percentage : 50;
+      const totalMarks = exam.total_marks || 50;
+      const passingMarks = Math.ceil((totalMarks * passingPct) / 100);
 
-      if (error) {
-        console.error('Error creating examination in Supabase:', error);
-        throw new Error(`Failed to create examination: ${error.message}`);
+      const packedInstructions = this._packExamInstructions(exam.instructions, {
+        passing_percentage: passingPct,
+        max_attempts: exam.max_attempts !== undefined ? exam.max_attempts : 2,
+        shuffle_questions: exam.shuffle_questions !== undefined ? exam.shuffle_questions : true,
+        show_answer_review: exam.show_answer_review !== undefined ? exam.show_answer_review : false,
+      });
+
+      const basePayload: any = {
+        course_id: exam.course_id,
+        title: exam.title,
+        description: exam.description,
+        instructions: packedInstructions,
+        duration_minutes: Math.max(5, exam.duration_minutes || 60),
+        total_marks: totalMarks,
+        passing_marks: passingMarks,
+        start_time: exam.start_time || null,
+        end_time: exam.end_time || null,
+        is_published: exam.is_published !== undefined ? exam.is_published : false,
+      };
+
+      // Try with extended fields first, if fails fallback to base payload
+      let result: any = null;
+      try {
+        const { data, error } = await supabase
+          .from('examinations')
+          .insert({
+            ...basePayload,
+            passing_percentage: passingPct,
+            max_attempts: exam.max_attempts !== undefined ? exam.max_attempts : 2,
+            shuffle_questions: exam.shuffle_questions !== undefined ? exam.shuffle_questions : true,
+            show_answer_review: exam.show_answer_review !== undefined ? exam.show_answer_review : false,
+          })
+          .select('*, course:courses(*)')
+          .single();
+
+        if (!error && data) {
+          result = data;
+        } else if (error) {
+          throw error;
+        }
+      } catch {
+        // Fallback to core columns
+        const { data: fallbackData, error: fbError } = await supabase
+          .from('examinations')
+          .insert(basePayload)
+          .select('*, course:courses(*)')
+          .single();
+
+        if (fbError) {
+          console.error('Error creating examination in Supabase:', fbError);
+          throw new Error(`Failed to create examination: ${fbError.message}`);
+        }
+        result = fallbackData;
       }
-      return data as Examination;
+
+      const { cleanInstructions, settings } = this._unpackExamInstructions(result.instructions);
+      return {
+        ...result,
+        instructions: cleanInstructions,
+        passing_percentage: result.passing_percentage ?? settings.passing_percentage ?? passingPct,
+        max_attempts: result.max_attempts ?? settings.max_attempts ?? 2,
+        shuffle_questions: result.shuffle_questions ?? settings.shuffle_questions ?? true,
+        show_answer_review: result.show_answer_review ?? settings.show_answer_review ?? false,
+      } as Examination;
+    }
+    throw new Error('Supabase is not configured');
+  },
+
+  async updateExamination(examId: string, exam: Partial<Examination>): Promise<Examination> {
+    if (isSupabaseConfigured()) {
+      const updateData: any = {};
+      if (exam.course_id !== undefined) updateData.course_id = exam.course_id;
+      if (exam.title !== undefined) updateData.title = exam.title;
+      if (exam.description !== undefined) updateData.description = exam.description;
+      if (exam.duration_minutes !== undefined) updateData.duration_minutes = Math.max(5, exam.duration_minutes);
+      if (exam.total_marks !== undefined) updateData.total_marks = exam.total_marks;
+      if (exam.start_time !== undefined) updateData.start_time = exam.start_time || null;
+      if (exam.end_time !== undefined) updateData.end_time = exam.end_time || null;
+      if (exam.is_published !== undefined) updateData.is_published = exam.is_published;
+
+      const passingPct = exam.passing_percentage !== undefined ? exam.passing_percentage : 50;
+      if (exam.total_marks !== undefined || exam.passing_percentage !== undefined) {
+        updateData.passing_marks = Math.ceil(((exam.total_marks || 50) * passingPct) / 100);
+      }
+
+      const packedInstructions = this._packExamInstructions(exam.instructions, {
+        passing_percentage: passingPct,
+        max_attempts: exam.max_attempts !== undefined ? exam.max_attempts : 2,
+        shuffle_questions: exam.shuffle_questions !== undefined ? exam.shuffle_questions : true,
+        show_answer_review: exam.show_answer_review !== undefined ? exam.show_answer_review : false,
+      });
+      updateData.instructions = packedInstructions;
+
+      let result: any = null;
+      try {
+        const { data, error } = await supabase
+          .from('examinations')
+          .update({
+            ...updateData,
+            passing_percentage: passingPct,
+            max_attempts: exam.max_attempts,
+            shuffle_questions: exam.shuffle_questions,
+            show_answer_review: exam.show_answer_review,
+          })
+          .eq('id', examId)
+          .select('*, course:courses(*)')
+          .single();
+
+        if (!error && data) {
+          result = data;
+        } else if (error) {
+          throw error;
+        }
+      } catch {
+        const { data: fallbackData, error: fbError } = await supabase
+          .from('examinations')
+          .update(updateData)
+          .eq('id', examId)
+          .select('*, course:courses(*)')
+          .single();
+
+        if (fbError) {
+          console.error('Error updating examination in Supabase:', fbError);
+          throw new Error(`Failed to update examination: ${fbError.message}`);
+        }
+        result = fallbackData;
+      }
+
+      const { cleanInstructions, settings } = this._unpackExamInstructions(result.instructions);
+      return {
+        ...result,
+        instructions: cleanInstructions,
+        passing_percentage: result.passing_percentage ?? settings.passing_percentage ?? passingPct,
+        max_attempts: result.max_attempts ?? settings.max_attempts ?? 2,
+        shuffle_questions: result.shuffle_questions ?? settings.shuffle_questions ?? true,
+        show_answer_review: result.show_answer_review ?? settings.show_answer_review ?? false,
+      } as Examination;
     }
     throw new Error('Supabase is not configured');
   },
 
   async deleteExamination(examId: string): Promise<void> {
     if (isSupabaseConfigured()) {
+      // Check if student attempts exist
+      const { count, error: countErr } = await supabase
+        .from('exam_attempts')
+        .select('*', { count: 'exact', head: true })
+        .eq('exam_id', examId);
+
+      if (count && count > 0) {
+        throw new Error('Cannot delete examination because student attempts already exist. You can unpublish or duplicate it.');
+      }
+
       const { error } = await supabase.from('examinations').delete().eq('id', examId);
       if (error) {
         console.error('Error deleting examination in Supabase:', error);
@@ -2508,7 +2825,121 @@ export const dataProvider = {
     }
   },
 
-  async getExamById(examId: string): Promise<Examination | null> {
+  async duplicateExamination(examId: string): Promise<Examination> {
+    if (isSupabaseConfigured()) {
+      const { data: origExam, error: examErr } = await supabase
+        .from('examinations')
+        .select('*')
+        .eq('id', examId)
+        .single();
+
+      if (examErr || !origExam) {
+        throw new Error(`Could not find examination to duplicate: ${examErr?.message || 'Not found'}`);
+      }
+
+      const { data: origQuestions } = await supabase
+        .from('exam_questions')
+        .select('*')
+        .eq('exam_id', examId)
+        .order('order_index');
+
+      // Create new draft examination
+      const newExam = await this.createExamination({
+        course_id: origExam.course_id,
+        title: `${origExam.title} (Copy)`,
+        description: origExam.description,
+        instructions: origExam.instructions,
+        duration_minutes: origExam.duration_minutes,
+        total_marks: origExam.total_marks,
+        passing_marks: origExam.passing_marks,
+        is_published: false, // New duplicated exam is always Draft
+      });
+
+      // Copy all questions
+      if (origQuestions && origQuestions.length > 0) {
+        for (const q of origQuestions) {
+          await this.createExamQuestion({
+            exam_id: newExam.id,
+            question_text: q.question_text,
+            options: q.options,
+            correct_option_index: q.correct_option_index,
+            marks: q.marks,
+            order_index: q.order_index,
+          });
+        }
+      }
+
+      return newExam;
+    }
+    throw new Error('Supabase is not configured');
+  },
+
+  async publishExamination(examId: string, publish: boolean): Promise<Examination> {
+    if (isSupabaseConfigured()) {
+      if (publish) {
+        const questions = await this.getExamQuestionsAdmin(examId);
+        if (questions.length < 10) {
+          throw new Error('An examination needs at least 10 questions before it can be published.');
+        }
+      }
+      return this.updateExamination(examId, { is_published: publish });
+    }
+    throw new Error('Supabase is not configured');
+  },
+
+  async reorderExamQuestions(examId: string, questionIds: string[]): Promise<void> {
+    if (isSupabaseConfigured()) {
+      const updates = questionIds.map((id, index) =>
+        supabase.from('exam_questions').update({ order_index: index + 1 }).eq('id', id)
+      );
+      await Promise.all(updates);
+    }
+  },
+
+  async importExamQuestionsCSV(
+    examId: string,
+    newQuestions: Array<{
+      question_text: string;
+      options: string[];
+      correct_option_index: number;
+      marks: number;
+    }>
+  ): Promise<ExamQuestion[]> {
+    if (isSupabaseConfigured()) {
+      const existing = await this.getExamQuestionsAdmin(examId);
+      let startIndex = existing.length + 1;
+      const createdList: ExamQuestion[] = [];
+
+      for (const q of newQuestions) {
+        const created = await this.createExamQuestion({
+          exam_id: examId,
+          question_text: q.question_text,
+          options: q.options,
+          correct_option_index: q.correct_option_index,
+          marks: q.marks || 2,
+          order_index: startIndex++,
+        });
+        createdList.push(created);
+      }
+
+      // Recompute total marks & passing marks on exam
+      const allQuestions = await this.getExamQuestionsAdmin(examId);
+      const totalMarks = allQuestions.reduce((sum, q) => sum + (q.marks || 2), 0);
+      const exam = await this.getExamByIdAdmin(examId);
+      const passingPct = exam?.passing_percentage || 50;
+      const passingMarks = Math.ceil((totalMarks * passingPct) / 100);
+
+      await this.updateExamination(examId, {
+        total_marks: totalMarks,
+        passing_marks: passingMarks,
+      });
+
+      return createdList;
+    }
+    throw new Error('Supabase is not configured');
+  },
+
+  async getExamByIdAdmin(examId: string): Promise<Examination | null> {
     if (isSupabaseConfigured()) {
       const { data: exam, error } = await supabase
         .from('examinations')
@@ -2516,75 +2947,401 @@ export const dataProvider = {
         .eq('id', examId)
         .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching examination by ID:', error);
-        throw new Error(`Failed to load examination: ${error.message}`);
-      }
-      if (!exam) return null;
-
-      // Secure query: strip correct_option_index from student payload
-      const { data: questions, error: qError } = await supabase
-        .from('exam_questions')
-        .select('id, exam_id, question_text, options, marks, order_index')
-        .eq('exam_id', examId)
-        .order('order_index', { ascending: true });
-
-      if (qError) {
-        console.error('Error fetching exam questions:', qError);
-      }
-
+      if (error || !exam) return null;
+      const { cleanInstructions, settings } = this._unpackExamInstructions(exam.instructions);
       return {
         ...exam,
-        questions: (questions || []) as ExamQuestion[],
+        instructions: cleanInstructions,
+        passing_percentage: exam.passing_percentage ?? settings.passing_percentage ?? 50,
+        max_attempts: exam.max_attempts ?? settings.max_attempts ?? 2,
+        shuffle_questions: exam.shuffle_questions ?? settings.shuffle_questions ?? true,
+        show_answer_review: exam.show_answer_review ?? settings.show_answer_review ?? false,
       } as Examination;
     }
     return null;
   },
 
-  async submitExam(examId: string, studentId: string, answers: Record<string, number>): Promise<ExamAttempt> {
+  async getExamResults(examId: string): Promise<ExamAttempt[]> {
     if (isSupabaseConfigured()) {
-      const formattedAnswers = Object.entries(answers).map(([qId, selIdx]) => ({
-        question_id: qId,
-        selected_option_index: selIdx,
-      }));
+      const { data, error } = await supabase
+        .from('exam_attempts')
+        .select('*, student:profiles(id, full_name, email, phone, college_name, department), examination:examinations(*)')
+        .eq('exam_id', examId)
+        .order('started_at', { ascending: false });
 
-      const { data, error } = await supabase.rpc('submit_examination', {
+      if (error) {
+        console.error('Error fetching exam results:', error);
+        throw new Error(`Failed to load exam results: ${error.message}`);
+      }
+      return (data || []) as ExamAttempt[];
+    }
+    return [];
+  },
+
+  async checkCourseHasPublishedExam(courseId: string): Promise<boolean> {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase
+        .from('examinations')
+        .select('id')
+        .eq('course_id', courseId)
+        .eq('is_published', true)
+        .limit(1);
+
+      if (!error && data && data.length > 0) return true;
+    }
+    return false;
+  },
+
+  // ==========================================
+  // STUDENT PROCTORED EXAM RPC METHODS
+  // ==========================================
+
+  async startExamAttempt(examId: string): Promise<{
+    success: boolean;
+    error?: string;
+    attempt_id?: string;
+    resumed?: boolean;
+    deadline_at?: string;
+  }> {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.rpc('start_exam_attempt', {
         p_exam_id: examId,
-        p_answers: formattedAnswers,
       });
 
       if (error) {
-        console.error('Error submitting examination via RPC:', error);
-        throw new Error(`Failed to submit examination: ${error.message}`);
+        console.error('start_exam_attempt error:', error);
+        throw new Error(error.message || 'Failed to initialize exam session.');
       }
-
-      if (data && data.attempt_id) {
-        const { data: attemptRecord, error: attErr } = await supabase
-          .from('exam_attempts')
-          .select('*, student:profiles(*), examination:examinations(*)')
-          .eq('id', data.attempt_id)
-          .single();
-
-        if (!attErr && attemptRecord) {
-          return attemptRecord as ExamAttempt;
-        }
-      }
-
-      return {
-        id: data?.attempt_id || generateUUID(),
-        exam_id: examId,
-        student_id: studentId,
-        score: data?.score || 0,
-        total_marks: data?.total_marks || 0,
-        percentage: data?.percentage || 0,
-        is_passed: !!data?.is_passed,
-        started_at: new Date().toISOString(),
-        submitted_at: new Date().toISOString(),
-        status: 'evaluated',
-      };
+      return data as any;
     }
     throw new Error('Supabase is not configured');
   },
+
+  async getExamQuestions(attemptId: string): Promise<Array<{
+    id: string;
+    question_text: string;
+    options: string[];
+    marks: number;
+    order_index: number;
+  }>> {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.rpc('get_exam_questions', {
+        p_attempt_id: attemptId,
+      });
+
+      if (error) {
+        console.error('get_exam_questions error:', error);
+        throw new Error(error.message || 'Failed to load exam questions.');
+      }
+      return (data || []) as any;
+    }
+    throw new Error('Supabase is not configured');
+  },
+
+  async saveExamProgress(
+    attemptId: string,
+    answers: Record<string, number>,
+    tabSwitches: number = 0
+  ): Promise<any> {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.rpc('save_exam_progress', {
+        p_attempt_id: attemptId,
+        p_answers: answers,
+        p_tab_switches: tabSwitches,
+      });
+
+      if (error) {
+        console.warn('save_exam_progress sync error:', error.message);
+      }
+      return data;
+    }
+  },
+
+  async submitExamAttempt(
+    attemptId: string,
+    answers: Record<string, number>
+  ): Promise<{
+    success: boolean;
+    score: number;
+    total_marks: number;
+    percentage: number;
+    is_passed: boolean;
+    timed_out?: boolean;
+    attempts_left?: number;
+    review?: Array<{
+      question_id: string;
+      question_text?: string;
+      options?: string[];
+      selected_option_index: number;
+      correct_option_index: number;
+      is_correct: boolean;
+      marks_awarded: number;
+    }>;
+    error?: string;
+  }> {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.rpc('submit_exam_attempt', {
+        p_attempt_id: attemptId,
+        p_answers: answers,
+      });
+
+      if (error) {
+        console.error('submit_exam_attempt error:', error);
+        throw new Error(error.message || 'Failed to submit exam attempt.');
+      }
+      return data as any;
+    }
+    throw new Error('Supabase is not configured');
+  },
+
+  async getExamsForStudent(studentId: string): Promise<StudentExamCardData[]> {
+    if (!isSupabaseConfigured() || !studentId) return [];
+
+    try {
+      // 1. Get approved enrollments
+      const { data: enrollments, error: enrError } = await supabase
+        .from('course_enrollments')
+        .select('course_id, status, course:courses(*)')
+        .eq('student_id', studentId)
+        .eq('status', 'approved');
+
+      if (enrError || !enrollments || enrollments.length === 0) return [];
+
+      const courseIds = enrollments.map((e) => e.course_id);
+
+      // 2. Fetch published examinations for these courses
+      const { data: examRows, error: examErr } = await supabase
+        .from('examinations')
+        .select('*, course:courses(*), questions:exam_questions(id, marks)')
+        .in('course_id', courseIds)
+        .eq('is_published', true)
+        .order('created_at', { ascending: false });
+
+      if (examErr || !examRows || examRows.length === 0) return [];
+
+      // 3. Get all sessions for these courses
+      const { data: moduleSessions } = await supabase
+        .from('sessions')
+        .select('id, module:modules!inner(course_id)');
+
+      // Map sessions per course
+      const courseSessionsMap: Record<string, string[]> = {};
+      (moduleSessions || []).forEach((s: any) => {
+        const cId = s.module?.course_id;
+        if (cId) {
+          if (!courseSessionsMap[cId]) courseSessionsMap[cId] = [];
+          courseSessionsMap[cId].push(s.id);
+        }
+      });
+
+      // 4. Get completed sessions for this student
+      const { data: progressRows } = await supabase
+        .from('session_progress')
+        .select('session_id, is_completed')
+        .eq('student_id', studentId)
+        .eq('is_completed', true);
+
+      const completedSessionSet = new Set((progressRows || []).map((p) => p.session_id));
+
+      // 5. Get all attempts by student for these exams
+      const examIds = examRows.map((e) => e.id);
+      const { data: attempts } = await supabase
+        .from('exam_attempts')
+        .select('*')
+        .in('exam_id', examIds)
+        .eq('student_id', studentId)
+        .order('started_at', { ascending: false });
+
+      const attemptsByExam: Record<string, ExamAttempt[]> = {};
+      (attempts || []).forEach((att) => {
+        if (!attemptsByExam[att.exam_id]) attemptsByExam[att.exam_id] = [];
+        attemptsByExam[att.exam_id].push(att as ExamAttempt);
+      });
+
+      // 6. Compute state for each exam
+      const results: StudentExamCardData[] = [];
+      const now = new Date();
+
+      for (const e of examRows) {
+        const { cleanInstructions, settings } = this._unpackExamInstructions(e.instructions);
+        const questionsList = e.questions || [];
+        const computedTotalMarks = questionsList.reduce((acc: number, curr: any) => acc + (curr.marks || 2), 0) || e.total_marks || 50;
+        const passingPct = e.passing_percentage ?? settings.passing_percentage ?? 50;
+        const passingMarks = Math.ceil((computedTotalMarks * passingPct) / 100);
+
+        const examObj: Examination = {
+          ...e,
+          instructions: cleanInstructions,
+          passing_percentage: passingPct,
+          max_attempts: e.max_attempts ?? settings.max_attempts ?? 2,
+          shuffle_questions: e.shuffle_questions ?? settings.shuffle_questions ?? true,
+          show_answer_review: e.show_answer_review ?? settings.show_answer_review ?? false,
+          total_marks: computedTotalMarks,
+          passing_marks: passingMarks,
+        };
+
+        const allCourseSessionIds = courseSessionsMap[e.course_id] || [];
+        const totalSessions = allCourseSessionIds.length;
+        const completedSessions = allCourseSessionIds.filter((sId) => completedSessionSet.has(sId)).length;
+        const progressPercent = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 100;
+
+        const examAttempts = attemptsByExam[e.id] || [];
+        const latestAttempt = examAttempts[0] || null;
+        const passedAttempt = examAttempts.find((a) => a.is_passed);
+        const inProgressAttempt = examAttempts.find((a) => a.status === 'in_progress');
+
+        const maxAttempts = examObj.max_attempts || 2;
+        const attemptsTaken = examAttempts.length;
+        const attemptsLeft = Math.max(0, maxAttempts - attemptsTaken);
+
+        let lockStatus: StudentExamLockStatus = 'available';
+
+        // Check 1: Course completion requirement (All sessions must be completed)
+        if (totalSessions > 0 && completedSessions < totalSessions) {
+          lockStatus = 'locked';
+        }
+        // Check 2: Dates window
+        else if (examObj.start_time && new Date(examObj.start_time) > now) {
+          lockStatus = 'not_open';
+        } else if (examObj.end_time && new Date(examObj.end_time) < now) {
+          lockStatus = 'closed';
+        }
+        // Check 3: Attempts & Completion status
+        else if (inProgressAttempt) {
+          lockStatus = 'in_progress';
+        } else if (passedAttempt) {
+          lockStatus = 'passed';
+        } else if (attemptsTaken > 0 && attemptsLeft > 0) {
+          lockStatus = 'failed_retake';
+        } else if (attemptsTaken > 0 && attemptsLeft <= 0) {
+          lockStatus = 'no_attempts_left';
+        } else {
+          lockStatus = 'available';
+        }
+
+        let activeAttemptData = null;
+        if (inProgressAttempt) {
+          const deadline = inProgressAttempt.deadline_at
+            ? new Date(inProgressAttempt.deadline_at).getTime()
+            : new Date(inProgressAttempt.started_at).getTime() + (examObj.duration_minutes || 60) * 60 * 1000;
+          const remainingSecs = Math.max(0, Math.floor((deadline - now.getTime()) / 1000));
+          activeAttemptData = {
+            attemptId: inProgressAttempt.id,
+            deadlineAt: inProgressAttempt.deadline_at || new Date(deadline).toISOString(),
+            remainingSeconds: remainingSecs,
+          };
+        }
+
+        results.push({
+          exam: examObj,
+          status: lockStatus,
+          progressPercent,
+          completedSessions,
+          totalSessions,
+          attemptsLeft,
+          attemptsTaken,
+          latestAttempt,
+          activeAttempt: activeAttemptData,
+        });
+      }
+
+      return results;
+    } catch (err) {
+      console.error('getExamsForStudent error:', err);
+      return [];
+    }
+  },
+
+  async getExamQuestionsAdmin(examId: string): Promise<ExamQuestion[]> {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase
+        .from('exam_questions')
+        .select('*')
+        .eq('exam_id', examId)
+        .order('order_index', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching admin exam questions:', error);
+        return [];
+      }
+      return (data || []) as ExamQuestion[];
+    }
+    const local = localStorage.getItem(`tnv_exam_questions_${examId}`);
+    return local ? JSON.parse(local) : [];
+  },
+
+  async createExamQuestion(question: Partial<ExamQuestion>): Promise<ExamQuestion> {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase
+        .from('exam_questions')
+        .insert({
+          exam_id: question.exam_id,
+          question_text: question.question_text,
+          options: question.options,
+          correct_option_index: question.correct_option_index ?? 0,
+          marks: question.marks ?? 2,
+          order_index: question.order_index ?? 1,
+        })
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('Error creating exam question:', error);
+        throw new Error(`Failed to create exam question: ${error.message}`);
+      }
+      return data as ExamQuestion;
+    }
+    const newQ: ExamQuestion = {
+      id: `eq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      exam_id: question.exam_id!,
+      question_text: question.question_text || '',
+      options: question.options || [],
+      correct_option_index: question.correct_option_index ?? 0,
+      marks: question.marks ?? 2,
+      order_index: question.order_index ?? 1,
+    };
+    const key = `tnv_exam_questions_${question.exam_id}`;
+    const list = JSON.parse(localStorage.getItem(key) || '[]');
+    list.push(newQ);
+    localStorage.setItem(key, JSON.stringify(list));
+    return newQ;
+  },
+
+  async updateExamQuestion(questionId: string, question: Partial<ExamQuestion>): Promise<ExamQuestion> {
+    if (isSupabaseConfigured()) {
+      const updateData: any = {};
+      if (question.question_text !== undefined) updateData.question_text = question.question_text;
+      if (question.options !== undefined) updateData.options = question.options;
+      if (question.correct_option_index !== undefined) updateData.correct_option_index = question.correct_option_index;
+      if (question.marks !== undefined) updateData.marks = question.marks;
+      if (question.order_index !== undefined) updateData.order_index = question.order_index;
+
+      const { data, error } = await supabase
+        .from('exam_questions')
+        .update(updateData)
+        .eq('id', questionId)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('Error updating exam question:', error);
+        throw new Error(`Failed to update exam question: ${error.message}`);
+      }
+      return data as ExamQuestion;
+    }
+    return question as ExamQuestion;
+  },
+
+  async deleteExamQuestion(questionId: string): Promise<void> {
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase.from('exam_questions').delete().eq('id', questionId);
+      if (error) {
+        console.error('Error deleting exam question:', error);
+        throw new Error(`Failed to delete exam question: ${error.message}`);
+      }
+    }
+  },
+
 
   async getExamAttempts(studentId?: string, adminId?: string): Promise<ExamAttempt[]> {
     if (isSupabaseConfigured()) {
@@ -3113,12 +3870,24 @@ export const dataProvider = {
     }
 
     const localCerts = getLocalStore<Certificate[]>('certificates', []);
+    const localMap = new Map<string, Certificate>();
+    localCerts.forEach((lc) => {
+      localMap.set(lc.certificate_number || lc.id, lc);
+    });
+
     const mergedMap = new Map<string, Certificate>();
 
     [...dbCerts, ...localCerts].forEach((c) => {
       const key = c.certificate_number || c.id;
       if (!mergedMap.has(key)) {
-        mergedMap.set(key, c);
+        const localMatch = localMap.get(key);
+        const forceIssued = c.is_force_issued ?? localMatch?.is_force_issued ?? false;
+        const realScore = c.overall_score !== undefined && c.overall_score !== null ? c.overall_score : (localMatch?.overall_score ?? 0);
+        mergedMap.set(key, {
+          ...c,
+          overall_score: realScore,
+          is_force_issued: forceIssued,
+        });
       }
     });
 
@@ -3176,12 +3945,17 @@ export const dataProvider = {
     [...dbCerts, ...localCerts].forEach((c) => {
       const key = c.certificate_number || c.id || `${c.student_id}-${c.course_id}`;
       if (!mergedMap.has(key)) {
-        const score = c.overall_score || 95;
-        const grade = c.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : 'B');
+        const localMatch = localCerts.find(
+          (lc) => lc.certificate_number === c.certificate_number || lc.id === c.id || (lc.student_id === c.student_id && lc.course_id === c.course_id)
+        );
+        const score = c.overall_score !== undefined && c.overall_score !== null ? c.overall_score : (localMatch?.overall_score ?? 0);
+        const grade = c.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 50 ? 'B' : 'C');
+        const forceIssued = c.is_force_issued ?? localMatch?.is_force_issued ?? false;
         mergedMap.set(key, {
           ...c,
           overall_score: score,
           grade,
+          is_force_issued: forceIssued,
         });
       }
     });
@@ -3301,10 +4075,12 @@ export const dataProvider = {
         });
 
         if (!error && data && data.certificate_number) {
+          const score = data.overall_score !== undefined && data.overall_score !== null ? Number(data.overall_score) : 0;
           return {
             ...data,
-            overall_score: data.overall_score || 95,
-            grade: data.grade || 'A+',
+            overall_score: score,
+            grade: data.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 50 ? 'B' : 'C'),
+            is_force_issued: data.is_force_issued ?? false,
           };
         }
       } catch (e) {
@@ -3314,13 +4090,14 @@ export const dataProvider = {
       // Fallback: direct select with non-PII field projection
       const { data: fallbackData } = await supabase
         .from('certificates')
-        .select('id, certificate_number, issue_date, completion_date, status, revoked_reason, overall_score, grade, student:profiles(full_name), course:courses(title), workshop:workshops(title)')
+        .select('id, certificate_number, issue_date, completion_date, status, revoked_reason, overall_score, grade, is_force_issued, student:profiles(full_name), course:courses(title), workshop:workshops(title)')
         .eq('certificate_number', cleanNum)
         .maybeSingle();
 
       if (fallbackData) {
         const courseTitle = (fallbackData.course as any)?.title;
         const workshopTitle = (fallbackData.workshop as any)?.title;
+        const score = fallbackData.overall_score !== undefined && fallbackData.overall_score !== null ? Number(fallbackData.overall_score) : 0;
         return {
           certificate_number: fallbackData.certificate_number,
           student_name: (fallbackData.student as any)?.full_name || 'Verified Scholar',
@@ -3331,8 +4108,9 @@ export const dataProvider = {
           status: fallbackData.status,
           is_valid: fallbackData.status === 'issued',
           revoked_reason: fallbackData.revoked_reason,
-          overall_score: fallbackData.overall_score || 95,
-          grade: fallbackData.grade || 'A+',
+          overall_score: score,
+          grade: fallbackData.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 50 ? 'B' : 'C'),
+          is_force_issued: fallbackData.is_force_issued ?? false,
         };
       }
     }
@@ -3341,6 +4119,7 @@ export const dataProvider = {
     const localCerts = getLocalStore<Certificate[]>('certificates', []);
     const matched = localCerts.find((c) => c.certificate_number?.toLowerCase() === cleanNum.toLowerCase());
     if (matched) {
+      const score = matched.overall_score !== undefined && matched.overall_score !== null ? Number(matched.overall_score) : 0;
       return {
         certificate_number: matched.certificate_number,
         student_name: matched.student?.full_name || 'Verified Scholar',
@@ -3350,8 +4129,9 @@ export const dataProvider = {
         status: matched.status,
         is_valid: matched.status === 'issued',
         revoked_reason: matched.revoked_reason,
-        overall_score: matched.overall_score || 95,
-        grade: matched.grade || 'A+',
+        overall_score: score,
+        grade: matched.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 50 ? 'B' : 'C'),
+        is_force_issued: matched.is_force_issued ?? false,
       };
     }
 
@@ -3360,21 +4140,194 @@ export const dataProvider = {
 
   async revokeCertificate(certificateId: string, reason: string): Promise<void> {
     if (isSupabaseConfigured()) {
-      const { error } = await supabase
-        .from('certificates')
-        .update({
-          status: 'revoked',
-          revoked_reason: reason,
-        })
-        .eq('id', certificateId);
+      try {
+        const { error } = await supabase
+          .from('certificates')
+          .update({
+            status: 'revoked',
+            revoked_reason: reason,
+          })
+          .eq('id', certificateId);
 
-      if (error) {
-        console.error('Error revoking certificate:', error);
-        throw new Error(`Failed to revoke certificate: ${error.message}`);
+        if (error) {
+          console.warn('Error updating status in Supabase certificates:', error.message);
+        }
+      } catch (err) {
+        console.warn('Failed to revoke certificate in Supabase:', err);
       }
-      return;
     }
-    throw new Error('Supabase is not configured');
+
+    // Always update localStorage
+    const localCerts = getLocalStore<Certificate[]>('certificates', []);
+    setLocalStore(
+      'certificates',
+      localCerts.map((c) =>
+        c.id === certificateId ? { ...c, status: 'revoked', revoked_reason: reason } : c
+      )
+    );
+  },
+
+  getCourseMinThreshold(courseId: string): number {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(`tnv_course_min_threshold_${courseId}`);
+      if (stored) {
+        const val = Number(stored);
+        if (!isNaN(val) && val >= 0 && val <= 100) return val;
+      }
+    }
+    return 50; // default 50%
+  },
+
+  setCourseMinThreshold(courseId: string, threshold: number): void {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`tnv_course_min_threshold_${courseId}`, String(threshold));
+    }
+  },
+
+  async getCertificateTemplates(): Promise<CertificateTemplate[]> {
+    const DEFAULT_TEMPLATES: CertificateTemplate[] = [
+      {
+        id: '60000000-0000-0000-0000-000000000001',
+        template_name: 'TNV Official Academy Certificate',
+        signatory_name: 'Thamilaran',
+        signatory_title: 'Program Director & Chief Architect',
+        badge_title: 'Certificate of Industry Excellence & Completion',
+        signature_image_url: '',
+        min_course_progress_percentage: 80.0,
+        min_exam_percentage: 50.0,
+        require_all_assignments: true,
+        require_project_approval: true,
+        is_active: true,
+        layout: 'classic',
+      },
+      {
+        id: '60000000-0000-0000-0000-000000000002',
+        template_name: 'Executive Leadership & Technology Award',
+        signatory_name: 'Thamilaran',
+        signatory_title: 'Head of Engineering & Systems',
+        badge_title: 'Executive Certificate of Distinction',
+        signature_image_url: '',
+        min_course_progress_percentage: 90.0,
+        min_exam_percentage: 60.0,
+        require_all_assignments: true,
+        require_project_approval: true,
+        is_active: true,
+        layout: 'executive',
+      },
+    ];
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('certificate_templates')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          // Merge with local storage layout customizations
+          const localList = getLocalStore<CertificateTemplate[]>('certificate_templates', []);
+          return data.map((d: any) => {
+            const match = localList.find((l) => l.id === d.id);
+            return {
+              ...d,
+              layout: match?.layout || d.layout || 'classic',
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('Error fetching certificate_templates from Supabase:', err);
+      }
+    }
+    return getLocalStore<CertificateTemplate[]>('certificate_templates', DEFAULT_TEMPLATES);
+  },
+
+  async saveCertificateTemplate(template: Partial<CertificateTemplate> & { id?: string }): Promise<CertificateTemplate> {
+    const DEFAULT_TEMPLATES: CertificateTemplate[] = [
+      {
+        id: '60000000-0000-0000-0000-000000000001',
+        template_name: 'TNV Official Academy Certificate',
+        signatory_name: 'Thamilaran',
+        signatory_title: 'Program Director & Chief Architect',
+        badge_title: 'Certificate of Industry Excellence & Completion',
+        signature_image_url: '',
+        min_course_progress_percentage: 80.0,
+        min_exam_percentage: 50.0,
+        require_all_assignments: true,
+        require_project_approval: true,
+        is_active: true,
+        layout: 'classic',
+      },
+    ];
+
+    const id = template.id || generateUUID();
+    const now = new Date().toISOString();
+    const completeTemplate: CertificateTemplate = {
+      id,
+      template_name: template.template_name || 'Standard Certificate Template',
+      signatory_name: template.signatory_name || 'Thamilaran',
+      signatory_title: template.signatory_title || 'Program Director & Chief Architect',
+      signature_image_url: template.signature_image_url || null,
+      badge_title: template.badge_title || 'Certificate of Completion',
+      min_course_progress_percentage: Number(template.min_course_progress_percentage) || 80,
+      min_exam_percentage: Number(template.min_exam_percentage) || 50,
+      require_all_assignments: template.require_all_assignments ?? true,
+      require_project_approval: template.require_project_approval ?? true,
+      is_active: template.is_active ?? true,
+      layout: template.layout || 'classic',
+      created_at: template.created_at || now,
+      updated_at: now,
+    };
+
+    if (isSupabaseConfigured()) {
+      try {
+        const payload: any = {
+          id: completeTemplate.id,
+          template_name: completeTemplate.template_name,
+          signatory_name: completeTemplate.signatory_name,
+          signatory_title: completeTemplate.signatory_title,
+          signature_image_url: completeTemplate.signature_image_url,
+          badge_title: completeTemplate.badge_title,
+          min_course_progress_percentage: completeTemplate.min_course_progress_percentage,
+          min_exam_percentage: completeTemplate.min_exam_percentage,
+          require_all_assignments: completeTemplate.require_all_assignments,
+          require_project_approval: completeTemplate.require_project_approval,
+          is_active: completeTemplate.is_active,
+        };
+
+        const { data, error } = await supabase
+          .from('certificate_templates')
+          .upsert(payload)
+          .select('*')
+          .maybeSingle();
+
+        if (!error && data) {
+          const merged = { ...completeTemplate, ...data, layout: completeTemplate.layout };
+          const localList = getLocalStore<CertificateTemplate[]>('certificate_templates', DEFAULT_TEMPLATES);
+          const filtered = localList.filter((t) => t.id !== id);
+          setLocalStore('certificate_templates', [merged, ...filtered]);
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Error saving certificate template to Supabase:', err);
+      }
+    }
+
+    const localList = getLocalStore<CertificateTemplate[]>('certificate_templates', DEFAULT_TEMPLATES);
+    const filtered = localList.filter((t) => t.id !== id);
+    setLocalStore('certificate_templates', [completeTemplate, ...filtered]);
+    return completeTemplate;
+  },
+
+  async deleteCertificateTemplate(id: string): Promise<void> {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('certificate_templates').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Error deleting certificate template:', err);
+      }
+    }
+    const localList = getLocalStore<CertificateTemplate[]>('certificate_templates', []);
+    setLocalStore('certificate_templates', localList.filter((t) => t.id !== id));
   },
 
   // ==========================================
@@ -3536,12 +4489,48 @@ export const dataProvider = {
         .eq('user_id', targetUserId);
 
       if (error) {
-        console.error('Error marking notification read in Supabase:', error);
-        throw new Error(`Failed to mark notification read: ${error.message}`);
+        console.warn('Error marking notification read in Supabase:', error);
       }
-      return;
     }
-    throw new Error('Supabase is not configured');
+
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `notifications_${userId}`;
+        const local = JSON.parse(localStorage.getItem(key) || '[]');
+        const updated = local.map((n: any) =>
+          n.id === notificationId ? { ...n, is_read: true } : n
+        );
+        localStorage.setItem(key, JSON.stringify(updated));
+        window.dispatchEvent(new Event('notifications-updated'));
+      } catch {}
+    }
+  },
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    if (isSupabaseConfigured()) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const targetUserId = user?.id || userId;
+
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', targetUserId)
+        .eq('is_read', false);
+
+      if (error) {
+        console.warn('Error marking all notifications read in Supabase:', error);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `notifications_${userId}`;
+        const local = JSON.parse(localStorage.getItem(key) || '[]');
+        const updated = local.map((n: any) => ({ ...n, is_read: true }));
+        localStorage.setItem(key, JSON.stringify(updated));
+        window.dispatchEvent(new Event('notifications-updated'));
+      } catch {}
+    }
   },
 
   // ==========================================

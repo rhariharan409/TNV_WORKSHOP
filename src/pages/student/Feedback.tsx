@@ -15,7 +15,7 @@ export const FeedbackPage: React.FC = () => {
   const { user } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [category, setCategory] = useState<Feedback['category']>('improvement');
-  const [subject, setSubject] = useState('');
+  const [subject, setSubject] = useState('Course Content');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -40,7 +40,7 @@ export const FeedbackPage: React.FC = () => {
     await dataProvider.submitFeedback(user.id, category, subject, description);
     setIsSubmitting(false);
     setSuccess(true);
-    setSubject('');
+    setSubject('Course Content');
     setDescription('');
     await loadData();
     setTimeout(() => setSuccess(false), 3000);
@@ -86,12 +86,21 @@ export const FeedbackPage: React.FC = () => {
               ]}
             />
 
-            <Input
+            <Select
               label="Subject *"
-              placeholder="e.g. Video playback issue in Session 2.1"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              required
+              options={[
+                { value: 'Course Content', label: 'Course Content' },
+                { value: 'Video/Playback Issue', label: 'Video/Playback Issue' },
+                { value: 'Assignment', label: 'Assignment' },
+                { value: 'Examination', label: 'Examination' },
+                { value: 'Certificate', label: 'Certificate' },
+                { value: 'Payment', label: 'Payment' },
+                { value: 'Technical Issue', label: 'Technical Issue' },
+                { value: 'Account/Profile', label: 'Account/Profile' },
+                { value: 'Other', label: 'Other' },
+              ]}
             />
           </div>
 

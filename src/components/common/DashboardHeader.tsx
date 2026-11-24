@@ -32,11 +32,18 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   useEffect(() => {
-    if (user?.id) {
-      dataProvider.getNotifications(user.id).then((notifs) => {
-        setUnreadCount(notifs.filter((n) => !n.is_read).length);
-      });
-    }
+    const fetchUnread = () => {
+      if (user?.id) {
+        dataProvider.getNotifications(user.id).then((notifs) => {
+          setUnreadCount(notifs.filter((n) => !n.is_read).length);
+        });
+      }
+    };
+    fetchUnread();
+    window.addEventListener('notifications-updated', fetchUnread);
+    return () => {
+      window.removeEventListener('notifications-updated', fetchUnread);
+    };
   }, [user?.id]);
 
   const handleLogout = async () => {
@@ -112,7 +119,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
 
         {/* Notifications */}
         <Link
-          to={isInAdminPortal ? '/admin/dashboard' : '/student/notifications'}
+          to={isInAdminPortal ? '/admin/notifications' : '/student/notifications'}
           className="relative p-2 rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
           title="Notifications"
         >

@@ -52,6 +52,7 @@ import { AdminCertificates } from './pages/admin/Certificates';
 import { AdminFeedback } from './pages/admin/Feedback';
 import { AdminReports } from './pages/admin/Reports';
 import { AdminSettingsPage } from './pages/admin/Settings';
+import { AdminNotifications } from './pages/admin/Notifications';
 
 export function App() {
   return (
@@ -138,6 +139,7 @@ export function App() {
               <Route path="attendance" element={<AdminAttendance />} />
               <Route path="certificates" element={<AdminCertificates />} />
               <Route path="feedback" element={<AdminFeedback />} />
+              <Route path="notifications" element={<AdminNotifications />} />
               <Route path="reports" element={<AdminReports />} />
               <Route path="settings" element={<AdminSettingsPage />} />
             </Route>

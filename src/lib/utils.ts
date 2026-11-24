@@ -93,3 +93,20 @@ export function isValidEmail(email: string): boolean {
   if (!email || typeof email !== 'string') return false;
   return EMAIL_REGEX.test(email.trim().toLowerCase());
 }
+
+/**
+ * Validates Google Drive / Docs links per requirement:
+ * Accepts only:
+ * - https://drive.google.com/file/d/<id>/...
+ * - https://drive.google.com/open?id=<id>...
+ * - https://docs.google.com/...
+ */
+export function isValidGoogleDriveUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  const driveFileRegex = /^https:\/\/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(\/.*)?$/i;
+  const driveOpenRegex = /^https:\/\/drive\.google\.com\/open\?id=[a-zA-Z0-9_-]+(&.*)?$/i;
+  const docsRegex = /^https:\/\/docs\.google\.com\/.+$/i;
+
+  return driveFileRegex.test(trimmed) || driveOpenRegex.test(trimmed) || docsRegex.test(trimmed);
+}

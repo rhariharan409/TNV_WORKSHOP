@@ -13,6 +13,7 @@ import {
   MessageSquareWarning,
   BarChart3,
   Settings,
+  Bell,
   LogOut,
   ShieldCheck,
   Eye,
@@ -34,6 +35,7 @@ export const AdminSidebar: React.FC = () => {
     { name: 'Attendance Records', href: '/admin/attendance', icon: UserCheck },
     { name: 'Certificates Center', href: '/admin/certificates', icon: Award },
     { name: 'Student Feedback', href: '/admin/feedback', icon: MessageSquareWarning },
+    { name: 'Notifications', href: '/admin/notifications', icon: Bell },
     { name: 'Reports & Export', href: '/admin/reports', icon: BarChart3 },
     { name: 'Platform Settings', href: '/admin/settings', icon: Settings },
   ];

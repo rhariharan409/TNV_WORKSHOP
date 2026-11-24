@@ -24,6 +24,12 @@
   height: 6px;
 }
 
+/* Hide browser's built-in password reveal & clear buttons (Edge / IE / Chromium) */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }

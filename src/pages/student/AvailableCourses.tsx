@@ -337,9 +337,33 @@ export const AvailableCourses: React.FC = () => {
           </div>
 
           <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="primary" size="sm" onClick={() => setSyllabusCourse(null)}>
-              Close Syllabus
-            </Button>
+            {syllabusCourse && enrolledCourseIds.has(syllabusCourse.id) ? (
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-[#155e32] hover:bg-[#114b28] text-white font-bold"
+                onClick={() => {
+                  const id = syllabusCourse.id;
+                  setSyllabusCourse(null);
+                  navigate(`/student/courses/${id}`);
+                }}
+              >
+                Go to Course
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-[#155e32] hover:bg-[#114b28] text-white font-bold"
+                onClick={() => {
+                  const target = syllabusCourse;
+                  setSyllabusCourse(null);
+                  if (target) handleStartEnrollment(target);
+                }}
+              >
+                Register Now
+              </Button>
+            )}
           </div>
         </div>
       </Modal>

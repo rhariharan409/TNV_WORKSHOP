@@ -16,6 +16,7 @@ import {
   Globe,
   Lock,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const AdminCourses: React.FC = () => {
@@ -23,6 +24,7 @@ export const AdminCourses: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [publishedExamCourseIds, setPublishedExamCourseIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'main' | 'published'>(
@@ -49,8 +51,13 @@ export const AdminCourses: React.FC = () => {
       user.email?.toLowerCase() === 'masteradmin@gmail.com' ||
       user.email?.toLowerCase() === 'materadmin@gmail.com';
     const adminId = isSuperAdmin ? undefined : user.id;
-    const cList = await dataProvider.getCourses({ adminId, isSuperAdmin });
+    const [cList, eList] = await Promise.all([
+      dataProvider.getCourses({ adminId, isSuperAdmin }),
+      dataProvider.getExaminations(undefined, adminId, true),
+    ]);
     setCourses(cList);
+    const pubCourseIds = new Set(eList.filter((e) => e.is_published).map((e) => e.course_id));
+    setPublishedExamCourseIds(pubCourseIds);
     setIsLoading(false);
   };
 
@@ -294,6 +301,13 @@ export const AdminCourses: React.FC = () => {
                         {formatDate(course.created_at)}
                       </span>
                     </div>
+
+                    {!publishedExamCourseIds.has(course.id) && (
+                      <div className="mt-2.5 p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                        <span>No exam: students cannot earn a certificate.</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}

@@ -25,8 +25,8 @@ export function generateCertificatePDF(data: CertificateData): jsPDF {
 
   const width = 297;
   const height = 210;
-  const score = data.overallScore || 95;
-  const grade = data.grade || (Number(score) >= 90 ? 'A+' : Number(score) >= 80 ? 'A' : 'B+');
+  const score = data.overallScore !== undefined && data.overallScore !== null ? Number(data.overallScore) : 0;
+  const grade = data.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 50 ? 'B' : 'C');
 
   // Background pure crisp white
   doc.setFillColor(255, 255, 255);

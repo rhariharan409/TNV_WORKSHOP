@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dataProvider } from '../../lib/dataProvider';
-import { AssignmentSubmission } from '../../types/database';
+import { AssignmentSubmission, Course, Assignment } from '../../types/database';
 import { formatDate } from '../../lib/utils';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -35,6 +36,12 @@ export const AdminSubmissions: React.FC = () => {
   // Active Tab: 'audit' (100% completion dossiers) or 'submissions' (individual assignments)
   const [activeTab, setActiveTab] = useState<'audit' | 'submissions'>('audit');
 
+  // Course filter state
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(searchParams.get('courseId') || null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+
   // Audit Dossiers state (100% course completions)
   const [auditList, setAuditList] = useState<StudentCourseAuditItem[]>([]);
   const [selectedAudit, setSelectedAudit] = useState<StudentCourseAuditItem | null>(null);
@@ -55,12 +62,16 @@ export const AdminSubmissions: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [subsList, audits] = await Promise.all([
+      const [subsList, audits, cList, aList] = await Promise.all([
         dataProvider.getAssignmentSubmissions(undefined, undefined, adminId),
         dataProvider.getCourseCompletionsAudit(adminId),
+        dataProvider.getCourses({ adminId }),
+        dataProvider.getAssignments(undefined, adminId),
       ]);
       setSubmissions(subsList);
       setAuditList(audits);
+      setCourses(cList);
+      setAssignments(aList);
     } catch (err) {
       console.error('Failed to load submissions and audits:', err);
     } finally {
@@ -104,7 +115,7 @@ export const AdminSubmissions: React.FC = () => {
           }
         });
       }
-      const overallScore = count > 0 ? Math.round(totalPts / count) : 95;
+      const overallScore = count > 0 ? Math.round(totalPts / count) : (selectedAudit.progressPercentage || 0);
 
       const issued = await dataProvider.issueCourseCertificate(
         selectedAudit.student.id,
@@ -166,8 +177,17 @@ export const AdminSubmissions: React.FC = () => {
     await loadData();
   };
 
+  const courseAssignments = selectedCourseId
+    ? assignments.filter((a) => a.course_id === selectedCourseId)
+    : assignments;
+
+  const visibleSubmissions = selectedCourseId
+    ? submissions.filter((s) => s.assignment?.course_id === selectedCourseId || courseAssignments.some((a) => a.id === s.assignment_id))
+    : submissions;
+
   // Filter audit items
   const filteredAudits = auditList.filter((a) => {
+    if (selectedCourseId && a.course.id !== selectedCourseId) return false;
     const matchesSearch =
       a.student.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.student.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -232,7 +252,7 @@ export const AdminSubmissions: React.FC = () => {
             <ShieldCheck className="w-4 h-4" />
             <span>100% Course Completion Audits</span>
             <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-brand-100 text-brand-800 dark:bg-brand-900/60 dark:text-brand-300 font-bold">
-              {auditList.filter((a) => a.progressPercentage >= 100 || a.isCompleted).length}
+              {filteredAudits.filter((a) => a.progressPercentage >= 100 || a.isCompleted).length}
             </span>
           </button>
 
@@ -247,9 +267,76 @@ export const AdminSubmissions: React.FC = () => {
             <FileText className="w-4 h-4" />
             <span>Individual Assignments</span>
             <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 font-bold">
-              {submissions.length}
+              {visibleSubmissions.length}
             </span>
           </button>
+        </div>
+      </div>
+
+      {/* Course Cards Selection (Show one card per course) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+            Filter Submissions by Course ({courses.length})
+          </span>
+          {selectedCourseId && (
+            <button
+              onClick={() => {
+                setSelectedCourseId(null);
+                setSearchParams({});
+              }}
+              className="text-xs text-brand-600 dark:text-brand-400 font-bold hover:underline"
+            >
+              Reset to All Courses
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          <button
+            onClick={() => {
+              setSelectedCourseId(null);
+              setSearchParams({});
+            }}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              selectedCourseId === null
+                ? 'bg-brand-50/80 border-brand-500 dark:bg-brand-950/40 text-brand-900 dark:text-brand-200 ring-2 ring-brand-500/30'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+            }`}
+          >
+            <span className="text-[10px] uppercase font-bold text-slate-400 block">Overview</span>
+            <span className="font-extrabold text-xs block truncate">All Courses</span>
+            <span className="text-[10px] text-slate-500">{submissions.length} Submissions</span>
+          </button>
+
+          {courses.map((c) => {
+            const isSel = selectedCourseId === c.id;
+            const cSubs = submissions.filter((s) => s.assignment?.course_id === c.id);
+            const cAudits = auditList.filter((a) => a.course.id === c.id);
+            const cAsgns = assignments.filter((a) => a.course_id === c.id);
+            return (
+              <button
+                key={c.id}
+                onClick={() => {
+                  setSelectedCourseId(c.id);
+                  setSearchParams({ courseId: c.id });
+                }}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  isSel
+                    ? 'bg-brand-50/80 border-brand-500 dark:bg-brand-950/40 text-brand-900 dark:text-brand-200 ring-2 ring-brand-500/30'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                }`}
+              >
+                <span className="text-[10px] uppercase font-bold text-slate-400 block truncate">
+                  {c.category || 'Course'}
+                </span>
+                <span className="font-extrabold text-xs block truncate">{c.title}</span>
+                <span className="text-[10px] text-slate-500 block truncate">
+                  {cAsgns.length} asgns • {cSubs.length} subs
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -444,14 +531,14 @@ export const AdminSubmissions: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                {submissions.length === 0 ? (
+                {visibleSubmissions.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-xs text-slate-500">
-                      No individual assignment submissions recorded yet.
+                      No individual assignment submissions recorded {selectedCourseId ? 'for this course' : ''} yet.
                     </td>
                   </tr>
                 ) : (
-                  submissions.map((s) => (
+                  visibleSubmissions.map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
                       <td className="py-3.5 px-4">
                         <span className="font-bold text-slate-900 dark:text-white block">

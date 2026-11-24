@@ -365,6 +365,10 @@ export interface Examination {
   duration_minutes: number;
   total_marks: number;
   passing_marks: number;
+  passing_percentage?: number;
+  max_attempts?: number;
+  shuffle_questions?: boolean;
+  show_answer_review?: boolean;
   start_time?: string | null;
   end_time?: string | null;
   is_published: boolean;
@@ -372,6 +376,7 @@ export interface Examination {
   course?: Course;
   questions?: ExamQuestion[];
   latest_attempt?: ExamAttempt | null;
+  attempts_count?: number;
 }
 
 export interface ExamQuestion {
@@ -388,15 +393,46 @@ export interface ExamAttempt {
   id: string;
   exam_id: string;
   student_id: string;
+  attempt_number?: number;
   score: number;
   total_marks: number;
   percentage: number;
   is_passed: boolean;
   started_at: string;
   submitted_at?: string | null;
+  deadline_at?: string | null;
   status: ExamStatus;
+  tab_switches?: number;
+  draft_answers?: Record<string, number>;
+  time_taken_seconds?: number;
   student?: Profile;
   examination?: Examination;
+}
+
+export type StudentExamLockStatus =
+  | 'locked'
+  | 'not_open'
+  | 'available'
+  | 'in_progress'
+  | 'passed'
+  | 'failed_retake'
+  | 'no_attempts_left'
+  | 'closed';
+
+export interface StudentExamCardData {
+  exam: Examination;
+  status: StudentExamLockStatus;
+  progressPercent: number;
+  completedSessions: number;
+  totalSessions: number;
+  attemptsLeft: number;
+  attemptsTaken: number;
+  latestAttempt?: ExamAttempt | null;
+  activeAttempt?: {
+    attemptId: string;
+    deadlineAt: string;
+    remainingSeconds: number;
+  } | null;
 }
 
 export interface LiveSession {
@@ -443,11 +479,30 @@ export interface Certificate {
   issued_by?: string | null;
   overall_score?: number | null;
   grade?: string | null;
+  is_force_issued?: boolean;
   created_at: string;
   student?: Profile;
   workshop?: Workshop;
   course?: Course;
   issuer?: Profile;
+}
+
+export interface CertificateTemplate {
+  id: string;
+  workshop_id?: string | null;
+  template_name: string;
+  signatory_name: string;
+  signatory_title: string;
+  signature_image_url?: string | null;
+  badge_title: string;
+  min_course_progress_percentage: number;
+  require_all_assignments: boolean;
+  require_project_approval: boolean;
+  min_exam_percentage: number;
+  is_active: boolean;
+  layout?: 'classic' | 'modern' | 'executive' | 'minimalist';
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Feedback {
