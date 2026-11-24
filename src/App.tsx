@@ -49,6 +49,7 @@ import { AdminExaminations } from './pages/admin/Examinations';
 import { AdminLiveSessions } from './pages/admin/LiveSessions';
 import { AdminAttendance } from './pages/admin/Attendance';
 import { AdminCertificates } from './pages/admin/Certificates';
+import { AdminCertificateTemplates } from './pages/admin/CertificateTemplates';
 import { AdminFeedback } from './pages/admin/Feedback';
 import { AdminReports } from './pages/admin/Reports';
 import { AdminSettingsPage } from './pages/admin/Settings';
@@ -138,6 +139,7 @@ export function App() {
               <Route path="live-sessions" element={<AdminLiveSessions />} />
               <Route path="attendance" element={<AdminAttendance />} />
               <Route path="certificates" element={<AdminCertificates />} />
+              <Route path="certificate-templates" element={<AdminCertificateTemplates />} />
               <Route path="feedback" element={<AdminFeedback />} />
               <Route path="notifications" element={<AdminNotifications />} />
               <Route path="reports" element={<AdminReports />} />

@@ -38,14 +38,16 @@ export const ExamResultsModal: React.FC<ExamResultsModalProps> = ({
       setIsLoading(true);
       Promise.all([
         dataProvider.getExamResults(exam.id),
-        dataProvider.getEnrollments(undefined, exam.course_id),
+        dataProvider.getEnrollments(),
       ])
         .then(([attList, enrList]) => {
           setAttempts(attList);
           const studentProfiles: Profile[] = [];
           enrList.forEach((e: any) => {
-            if (e.student && !studentProfiles.some((s) => s.id === e.student.id)) {
-              studentProfiles.push(e.student);
+            if (e.workshop_id === exam.course_id || e.course_id === exam.course_id) {
+              if (e.student && !studentProfiles.some((s) => s.id === e.student.id)) {
+                studentProfiles.push(e.student);
+              }
             }
           });
           setEnrolledStudents(studentProfiles);
@@ -200,41 +202,37 @@ export const ExamResultsModal: React.FC<ExamResultsModalProps> = ({
           <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold">
             <button
               onClick={() => setFilterStatus('all')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                filterStatus === 'all'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all ${filterStatus === 'all'
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400'
+                }`}
             >
               All Attempts ({attempts.length})
             </button>
             <button
               onClick={() => setFilterStatus('passed')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                filterStatus === 'passed'
-                  ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all ${filterStatus === 'passed'
+                ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400'
+                }`}
             >
               Passed ({passedAttempts.length})
             </button>
             <button
               onClick={() => setFilterStatus('failed')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                filterStatus === 'failed'
-                  ? 'bg-white dark:bg-slate-900 text-rose-600 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all ${filterStatus === 'failed'
+                ? 'bg-white dark:bg-slate-900 text-rose-600 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400'
+                }`}
             >
               Failed ({attempts.filter((a) => !a.is_passed).length})
             </button>
             <button
               onClick={() => setFilterStatus('not_attempted')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                filterStatus === 'not_attempted'
-                  ? 'bg-white dark:bg-slate-900 text-amber-600 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all ${filterStatus === 'not_attempted'
+                ? 'bg-white dark:bg-slate-900 text-amber-600 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400'
+                }`}
             >
               Not Attempted ({notAttemptedStudents.length})
             </button>

@@ -109,8 +109,8 @@ export const Certificates: React.FC = () => {
   const handleDownload = (cert: Certificate) => {
     if (!user) return;
     const title = cert.course?.title || cert.workshop?.title || 'Specialized Technical Course';
-    const score = cert.overall_score || 95;
-    const grade = cert.grade || (Number(score) >= 90 ? 'A+' : Number(score) >= 80 ? 'A' : 'B+');
+    const score = cert.overall_score !== undefined && cert.overall_score !== null ? Number(cert.overall_score) : 0;
+    const grade = cert.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 50 ? 'B' : 'C');
 
     downloadCertificate({
       studentName: cert.student?.full_name || user.full_name,
@@ -175,8 +175,8 @@ export const Certificates: React.FC = () => {
           <div className="space-y-8">
             {issuedCerts.map((cert) => {
               const title = cert.course?.title || cert.workshop?.title || 'Technical Workshop Program';
-              const score = cert.overall_score || 95;
-              const grade = cert.grade || (Number(score) >= 90 ? 'A+' : Number(score) >= 80 ? 'A' : 'B+');
+              const score = cert.overall_score !== undefined && cert.overall_score !== null ? Number(cert.overall_score) : 0;
+              const grade = cert.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 50 ? 'B' : 'C');
               const studentName = cert.student?.full_name || user?.full_name || 'Enrolled Student';
               const collegeName = cert.student?.college_name || user?.college_name || 'TNV Workshop Academy';
               const deptName = cert.student?.department || user?.department || 'Information Technology';
@@ -189,6 +189,11 @@ export const Certificates: React.FC = () => {
                       <Badge variant="success" className="px-3 py-1 font-bold">
                         Verified & Active
                       </Badge>
+                      {cert.is_force_issued && (
+                        <Badge variant="warning" className="px-2.5 py-1 font-bold bg-amber-100 text-amber-900 border-amber-300">
+                          Force Issued
+                        </Badge>
+                      )}
                       <span className="text-xs font-mono text-slate-500">
                         ID: <strong className="text-slate-800 dark:text-slate-200">{cert.certificate_number}</strong>
                       </span>
@@ -299,7 +304,7 @@ export const Certificates: React.FC = () => {
                       <div className="inline-flex flex-wrap items-center justify-center gap-3 px-5 sm:px-8 py-2.5 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-emerald-800 shadow-xs">
                         <div className="flex items-center gap-1.5 text-xs font-black text-emerald-800">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>Course Progress: 100%</span>
+                          <span>Course Progress: {cert.is_force_issued ? `${score}% (Administrative)` : '100%'}</span>
                         </div>
                         <span className="text-emerald-300">•</span>
                         <div className="text-xs font-black text-emerald-950">
@@ -309,6 +314,15 @@ export const Certificates: React.FC = () => {
                         <div className="text-xs font-black text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-md">
                           Grade: {grade}
                         </div>
+                        {cert.is_force_issued && (
+                          <>
+                            <span className="text-emerald-300">•</span>
+                            <div className="text-xs font-black text-amber-900 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                              <Award className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Force Issued Credential</span>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {/* Signature Blocks & Seal */}

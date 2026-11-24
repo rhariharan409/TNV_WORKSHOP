@@ -53,7 +53,7 @@ export const VerifyCertificatePage: React.FC = () => {
       certificateNumber: verifiedCert.certificate_number,
       completionDate: verifiedCert.completion_date || verifiedCert.issue_date,
       issueDate: verifiedCert.issue_date,
-      overallScore: verifiedCert.overall_score || 95,
+      overallScore: verifiedCert.overall_score !== undefined && verifiedCert.overall_score !== null ? verifiedCert.overall_score : 0,
       grade: verifiedCert.grade || 'A+',
       signatoryName: 'Thamilaran',
       signatoryTitle: 'Program Director & Chief Architect',
@@ -136,8 +136,13 @@ export const VerifyCertificatePage: React.FC = () => {
                   <div>
                     <span className="text-slate-500 block">Overall Score & Grade:</span>
                     <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                      {verifiedCert.overall_score || 95}% ({verifiedCert.grade || 'A+'})
+                      {verifiedCert.overall_score !== undefined && verifiedCert.overall_score !== null ? verifiedCert.overall_score : 0}% ({verifiedCert.grade || 'A+'})
                     </span>
+                    {verifiedCert.is_force_issued && (
+                      <span className="ml-2 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        Force Issued
+                      </span>
+                    )}
                   </div>
                   <div>
                     <span className="text-slate-500 block">Issue Date:</span>

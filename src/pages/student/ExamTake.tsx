@@ -25,6 +25,7 @@ import {
   ChevronUp,
   ChevronDown,
   Menu,
+  GraduationCap,
 } from 'lucide-react';
 
 interface QuestionPayload {
@@ -47,10 +48,12 @@ interface SubmitResult {
     question_id: string;
     question_text?: string;
     options?: string[];
-    selected_option_index: number;
-    correct_option_index: number;
+    selected_option_index?: number;
+    correct_option_index?: number;
+    selected?: number;
+    correct?: number;
     is_correct: boolean;
-    marks_awarded: number;
+    marks_awarded?: number;
   }>;
   error?: string;
 }
@@ -104,7 +107,7 @@ export const ExamTake: React.FC = () => {
   const answersRef = useRef<Record<string, number>>({});
   answersRef.current = answers;
   const tabSwitchesRef = useRef<number>(0);
-  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSubmittingRef = useRef(false);
 
   // 1. Initialize or Resume Examination Attempt
@@ -337,11 +340,10 @@ export const ExamTake: React.FC = () => {
       <div className="max-w-3xl mx-auto py-8 px-4 space-y-6">
         <Card className="p-7 sm:p-10 text-center space-y-6 border-slate-200 dark:border-slate-800 shadow-xl">
           <div
-            className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
-              examResult.is_passed
-                ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                : 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
-            }`}
+            className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${examResult.is_passed
+              ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+              : 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+              }`}
           >
             {examResult.is_passed ? (
               <CheckCircle2 className="w-12 h-12" />
@@ -376,11 +378,10 @@ export const ExamTake: React.FC = () => {
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Percentage</span>
               <span
-                className={`text-xl font-black ${
-                  examResult.is_passed
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-rose-600 dark:text-rose-400'
-                }`}
+                className={`text-xl font-black ${examResult.is_passed
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-rose-600 dark:text-rose-400'
+                  }`}
               >
                 {examResult.percentage}%
               </span>
@@ -447,28 +448,29 @@ export const ExamTake: React.FC = () => {
             <div className="space-y-3">
               {examResult.review.map((item, idx) => {
                 const q = questions.find((quest) => quest.id === item.question_id);
-                const qText = item.question_text || q?.question_text || `Question #${idx + 1}`;
-                const options = item.options || q?.options || [];
+                const qText = q?.question_text || item.question_text || `Question #${idx + 1}`;
+                const options = q?.options || item.options || [];
+                const selected_option_index = item.selected ?? item.selected_option_index;
+                const correct_option_index = item.correct ?? item.correct_option_index;
+                const marks_awarded = item.marks_awarded ?? (item.is_correct ? (q?.marks || 0) : 0);
 
                 return (
                   <Card
                     key={item.question_id || idx}
-                    className={`p-5 border space-y-3 ${
-                      item.is_correct
-                        ? 'border-emerald-200 dark:border-emerald-800/80'
-                        : 'border-rose-200 dark:border-rose-800/80'
-                    }`}
+                    className={`p-5 border space-y-3 ${item.is_correct
+                      ? 'border-emerald-200 dark:border-emerald-800/80'
+                      : 'border-rose-200 dark:border-rose-800/80'
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <span
-                          className={`text-[10px] uppercase font-extrabold px-2 py-0.5 rounded ${
-                            item.is_correct
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                          }`}
+                          className={`text-[10px] uppercase font-extrabold px-2 py-0.5 rounded ${item.is_correct
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                            }`}
                         >
-                          Q{idx + 1} • {item.is_correct ? 'Correct' : 'Incorrect'} ({item.marks_awarded} Marks)
+                          Q{idx + 1} • {item.is_correct ? 'Correct' : 'Incorrect'} ({marks_awarded} Marks)
                         </span>
                         <h4 className="font-bold text-xs text-slate-900 dark:text-white pt-1">
                           {qText}
@@ -478,8 +480,8 @@ export const ExamTake: React.FC = () => {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                       {options.map((opt, oIdx) => {
-                        const isStudentChoice = item.selected_option_index === oIdx;
-                        const isCorrectChoice = item.correct_option_index === oIdx;
+                        const isStudentChoice = selected_option_index === oIdx;
+                        const isCorrectChoice = correct_option_index === oIdx;
 
                         let style = 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400';
                         if (isCorrectChoice) {
@@ -541,11 +543,10 @@ export const ExamTake: React.FC = () => {
           <div className="flex items-center gap-3 shrink-0">
             {/* Live Countdown Timer */}
             <div
-              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 font-mono font-black text-sm transition-colors ${
-                isTimerCritical
-                  ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
-                  : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white'
-              }`}
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 font-mono font-black text-sm transition-colors ${isTimerCritical
+                ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
+                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white'
+                }`}
             >
               <Clock className="w-4 h-4" />
               <span>{formatTimer(remainingSeconds)}</span>
@@ -609,11 +610,10 @@ export const ExamTake: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleToggleFlag(currentQ.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors ${
-                    flaggedQuestions.has(currentQ.id)
-                      ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors ${flaggedQuestions.has(currentQ.id)
+                    ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
                 >
                   <Flag className="w-3.5 h-3.5" />
                   <span>{flaggedQuestions.has(currentQ.id) ? 'Flagged for Review' : 'Flag Question'}</span>
@@ -639,18 +639,16 @@ export const ExamTake: React.FC = () => {
                       key={oIdx}
                       type="button"
                       onClick={() => handleSelectOption(currentQ.id, oIdx)}
-                      className={`w-full p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${
-                        isSelected
-                          ? 'border-brand-500 bg-brand-50/70 dark:bg-brand-950/40 text-brand-950 dark:text-brand-100 ring-2 ring-brand-500/30 font-semibold'
-                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
-                      }`}
+                      className={`w-full p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${isSelected
+                        ? 'border-brand-500 bg-brand-50/70 dark:bg-brand-950/40 text-brand-950 dark:text-brand-100 ring-2 ring-brand-500/30 font-semibold'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
                     >
                       <span
-                        className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-brand-600 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                        }`}
+                        className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${isSelected
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                          }`}
                       >
                         {String.fromCharCode(65 + oIdx)}
                       </span>
@@ -770,9 +768,8 @@ export const ExamTake: React.FC = () => {
                     key={q.id}
                     type="button"
                     onClick={() => setCurrentIdx(idx)}
-                    className={`h-9 rounded-xl text-xs font-mono font-bold flex items-center justify-center transition-all ${badgeStyle} ${
-                      isCurrent ? 'ring-2 ring-brand-500 scale-105 shadow-sm' : 'hover:opacity-80'
-                    }`}
+                    className={`h-9 rounded-xl text-xs font-mono font-bold flex items-center justify-center transition-all ${badgeStyle} ${isCurrent ? 'ring-2 ring-brand-500 scale-105 shadow-sm' : 'hover:opacity-80'
+                      }`}
                   >
                     {idx + 1}
                   </button>
@@ -831,9 +828,8 @@ export const ExamTake: React.FC = () => {
                         setCurrentIdx(idx);
                         setMobilePaletteOpen(false);
                       }}
-                      className={`h-10 rounded-xl text-xs font-mono font-bold flex items-center justify-center ${badgeStyle} ${
-                        isCurrent ? 'ring-2 ring-brand-500 scale-105' : ''
-                      }`}
+                      className={`h-10 rounded-xl text-xs font-mono font-bold flex items-center justify-center ${badgeStyle} ${isCurrent ? 'ring-2 ring-brand-500 scale-105' : ''
+                        }`}
                     >
                       {idx + 1}
                     </button>

@@ -21,6 +21,8 @@ import {
   Examination,
   ExamQuestion,
   ExamAttempt,
+  StudentExamCardData,
+  StudentExamLockStatus,
   LiveSession,
   Attendance,
   Certificate,
@@ -313,11 +315,11 @@ export const dataProvider = {
     const updated = all.map((e) =>
       e.id === enrollmentId
         ? {
-            ...e,
-            status,
-            notes: notes ?? e.notes,
-            approved_at: status === 'approved' ? new Date().toISOString() : e.approved_at,
-          }
+          ...e,
+          status,
+          notes: notes ?? e.notes,
+          approved_at: status === 'approved' ? new Date().toISOString() : e.approved_at,
+        }
         : e
     );
     setLocalStore('enrollments', updated);
@@ -1219,7 +1221,7 @@ export const dataProvider = {
       return enrollments.map((enr) => {
         const stats = sessionsByCourse[enr.course_id] || { total: 0, completed: 0 };
         const realPct = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
-        
+
         const rawC = Array.isArray(enr.course) ? enr.course[0] : enr.course;
         const resolvedCourse = (rawC && rawC.id) ? rawC : (fetchedCoursesMap[enr.course_id] || null);
 
@@ -1814,7 +1816,7 @@ export const dataProvider = {
               const sub = submissionsList.find(
                 (sub) => sub.student_id === enr.student_id && (sub.assignment?.session_id === s.id || sub.assignment?.title === s.title || sub.assignment_id === s.id)
               );
-              
+
               // Find actual repo URL submitted by student
               let repoUrl = sub?.submission_text || sub?.file_url;
               if (!repoUrl && typeof window !== 'undefined') {
@@ -1839,7 +1841,7 @@ export const dataProvider = {
                       }
                     }
                   }
-                } catch {}
+                } catch { }
               }
 
               if (!repoUrl) {
@@ -1878,7 +1880,7 @@ export const dataProvider = {
                   if (saved) {
                     pct = JSON.parse(saved).percentage;
                   }
-                } catch {}
+                } catch { }
               }
               if (pct === undefined) {
                 pct = 90;
@@ -1890,7 +1892,7 @@ export const dataProvider = {
                   const parsed = JSON.parse(s.description);
                   benchmark = parsed.passing_percentage || 50;
                 }
-              } catch {}
+              } catch { }
 
               auditAssessments.push({
                 id: s.id,
@@ -1923,7 +1925,7 @@ export const dataProvider = {
                   }
                 }
               }
-            } catch {}
+            } catch { }
           }
           if (!studentRepo) {
             const anySub = submissionsList.find(
@@ -2051,7 +2053,7 @@ export const dataProvider = {
             if (parsed.video_links && Array.isArray(parsed.video_links)) {
               videoLinksFromData = parsed.video_links;
             }
-          } catch {}
+          } catch { }
         }
 
         const videoLinksFromTable = sessionVideos.map((v, i) => ({
@@ -2065,10 +2067,10 @@ export const dataProvider = {
           videoLinksFromTable.length > 0
             ? videoLinksFromTable
             : videoLinksFromData.length > 0
-            ? videoLinksFromData
-            : driveUrl
-            ? [{ id: 'v1', title: s.title || 'Video Lecture', url: driveUrl, duration_minutes: s.duration_minutes || 45 }]
-            : [];
+              ? videoLinksFromData
+              : driveUrl
+                ? [{ id: 'v1', title: s.title || 'Video Lecture', url: driveUrl, duration_minutes: s.duration_minutes || 45 }]
+                : [];
 
         return {
           ...s,
@@ -2238,7 +2240,7 @@ export const dataProvider = {
           if (!flatRes.error && flatRes.data) {
             return flatRes.data as Assignment[];
           }
-        } catch {}
+        } catch { }
         return [];
       }
       let list = (data || []) as Assignment[];
@@ -3729,7 +3731,7 @@ export const dataProvider = {
               created_at: new Date().toISOString(),
             });
             localStorage.setItem(key, JSON.stringify(studentNotifs));
-          } catch {}
+          } catch { }
         }
       }
     } catch (err) {
@@ -3773,7 +3775,7 @@ export const dataProvider = {
             localRecords = localRecords.filter((a) => a.student_id === studentId);
           }
         }
-      } catch {}
+      } catch { }
     }
 
     // Merge: db records supplemented/overridden by any newer local saves
@@ -3968,7 +3970,7 @@ export const dataProvider = {
         try {
           const c = await this.getCourseById(cert.course_id);
           if (c) cert.course = c;
-        } catch {}
+        } catch { }
       }
       if (!cert.student && cert.student_id) {
         try {
@@ -3979,7 +3981,7 @@ export const dataProvider = {
             const p = (await this.getProfiles()).find((x) => x.id === cert.student_id);
             if (p) cert.student = p;
           }
-        } catch {}
+        } catch { }
       }
     }
 
@@ -4439,7 +4441,7 @@ export const dataProvider = {
           const ids = new Set(list.map((n) => n.id));
           const uniqueLocal = local.filter((n: any) => !ids.has(n.id));
           list = [...uniqueLocal, ...list];
-        } catch {}
+        } catch { }
       }
 
       return list;
@@ -4502,7 +4504,7 @@ export const dataProvider = {
         );
         localStorage.setItem(key, JSON.stringify(updated));
         window.dispatchEvent(new Event('notifications-updated'));
-      } catch {}
+      } catch { }
     }
   },
 
@@ -4529,7 +4531,7 @@ export const dataProvider = {
         const updated = local.map((n: any) => ({ ...n, is_read: true }));
         localStorage.setItem(key, JSON.stringify(updated));
         window.dispatchEvent(new Event('notifications-updated'));
-      } catch {}
+      } catch { }
     }
   },
 
