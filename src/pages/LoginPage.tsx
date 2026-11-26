@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, LogOut, UserCheck, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, LogOut, UserCheck, ShieldCheck, GraduationCap } from 'lucide-react';
 import { EMAIL_REGEX, isValidEmail } from '../lib/utils';
 
 interface LoginPageProps {
@@ -67,9 +67,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
         cleanEmail === 'masteradmin' ||
         cleanEmail === 'materadmin';
 
+      const isInstructor = res.role === 'instructor';
+
       if (isAdmin) {
         navigate('/admin/dashboard', { replace: true });
-      } else if (from && !from.startsWith('/admin')) {
+      } else if (isInstructor) {
+        navigate('/instructor/dashboard', { replace: true });
+      } else if (from && !from.startsWith('/admin') && !from.startsWith('/instructor')) {
         navigate(from, { replace: true });
       } else {
         navigate('/student/dashboard', { replace: true });
@@ -93,6 +97,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
     user?.email?.toLowerCase() === 'masteradmin@gmail.com' ||
     user?.email?.toLowerCase() === 'materadmin@gmail.com';
 
+  const isUserInstructor = user?.role === 'instructor';
+
   return (
     <div className="min-h-screen flex flex-col bg-[#f0f4f1] text-slate-800 font-sans selection:bg-brand-600 selection:text-white">
       {/* ======================================================== */}
@@ -110,6 +116,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
                 <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-brand-700 flex items-center justify-center mx-auto shadow-sm">
                   {isUserAdmin ? (
                     <ShieldCheck className="w-9 h-9 text-brand-700" />
+                  ) : isUserInstructor ? (
+                    <GraduationCap className="w-9 h-9 text-brand-700" />
                   ) : (
                     <UserCheck className="w-9 h-9 text-brand-700" />
                   )}
@@ -124,20 +132,38 @@ export const LoginPage: React.FC<LoginPageProps> = ({ defaultMode = 'signin' }) 
                   </h2>
                   <p className="text-xs text-slate-500 font-mono">{user.email}</p>
                   <p className="text-xs font-bold text-brand-700 uppercase tracking-wider mt-1">
-                    {isUserAdmin ? 'Lead Academy Administrator' : 'Enrolled Student'}
+                    {isUserAdmin
+                      ? 'Lead Academy Administrator'
+                      : isUserInstructor
+                      ? 'Course Instructor / Faculty'
+                      : 'Enrolled Student'}
                   </p>
                 </div>
 
                 <div className="space-y-3 pt-2">
                   <button
                     onClick={() =>
-                      navigate(isUserAdmin ? '/admin/dashboard' : '/student/dashboard', {
-                        replace: true,
-                      })
+                      navigate(
+                        isUserAdmin
+                          ? '/admin/dashboard'
+                          : isUserInstructor
+                          ? '/instructor/dashboard'
+                          : '/student/dashboard',
+                        {
+                          replace: true,
+                        }
+                      )
                     }
                     className="w-full py-3.5 px-8 rounded-full bg-[#1b6b3a] hover:bg-[#14532d] text-white font-bold text-sm shadow-lg shadow-emerald-900/10 transition-all flex items-center justify-center gap-2 group active:scale-98"
                   >
-                    <span>Enter {isUserAdmin ? 'Admin Console' : 'Student Portal'}</span>
+                    <span>
+                      Enter{' '}
+                      {isUserAdmin
+                        ? 'Admin Console'
+                        : isUserInstructor
+                        ? 'Instructor Portal'
+                        : 'Student Portal'}
+                    </span>
                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </button>
 

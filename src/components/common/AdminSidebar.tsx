@@ -28,6 +28,7 @@ export const AdminSidebar: React.FC = () => {
   const links = [
     { name: 'Dashboard & Analytics', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Courses', href: '/admin/courses', icon: BookOpen },
+    { name: 'Instructors', href: '/admin/instructors', icon: ShieldCheck },
     { name: 'Student Management', href: '/admin/students', icon: Users },
     { name: 'Assignment Manager', href: '/admin/assignments', icon: FileText },
     { name: 'Submissions & Grading', href: '/admin/submissions', icon: FileCheck2 },
@@ -42,32 +43,45 @@ export const AdminSidebar: React.FC = () => {
     { name: 'Platform Settings', href: '/admin/settings', icon: Settings },
   ];
 
+  const rawName = user?.full_name || 'masteradmin';
+  const displayName = rawName.replace(/materadmin/gi, 'masteradmin');
+
   return (
-    <aside className="w-64 border-r border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 flex flex-col shrink-0 min-h-screen">
+    <aside className="w-64 border-r border-[#09351a] bg-[#0d4825] text-white flex flex-col shrink-0 min-h-screen shadow-lg">
       {/* Brand Header */}
-      <div className="h-16 px-5 flex items-center gap-3 border-b border-slate-100 dark:border-slate-800">
-        <img src="/tnv-logo.png" alt="TNV Logo" className="w-9 h-9 rounded-full object-contain shrink-0 shadow-xs" />
+      <div className="h-16 px-5 flex items-center gap-3 border-b border-[#0a3a1d]">
+        <img
+          src="/tnv-logo.png"
+          alt="TNV Logo"
+          className="w-9 h-9 rounded-full object-contain shrink-0 shadow-xs ring-2 ring-white/20 bg-white"
+        />
         <div className="min-w-0">
-          <h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">TNV Workshop</h2>
-          <span className="text-[10px] font-semibold tracking-wider text-amber-700 dark:text-brand-yellow uppercase">
+          <h2 className="text-sm font-extrabold tracking-tight text-white truncate">TNV Workshop</h2>
+          <span className="text-[10px] font-black tracking-wider text-[#f5c518] uppercase">
             Admin Console
           </span>
         </div>
       </div>
 
       {/* Switch to Student View Banner */}
-      <div className="p-3 bg-amber-50/70 dark:bg-amber-950/40 border-b border-amber-200/70 dark:border-amber-800/60">
+      <div className="p-3 bg-[#0a3a1d] border-b border-[#082e17]">
         <Link
           to="/student/dashboard"
-          className="w-full py-2 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 active:scale-95"
+          className="w-full py-2 px-3 rounded-xl bg-[#0e4624] hover:bg-[#12532a] border border-emerald-700/60 text-emerald-100 hover:text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 active:scale-95"
         >
-          <Eye className="w-4 h-4 text-[#1b6b3a]" />
+          <Eye className="w-4 h-4 text-[#f5c518]" />
           <span>Switch to Student View</span>
         </Link>
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <div className="px-3 pt-3 pb-1">
+        <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-300/70">
+          Main Navigation
+        </span>
+      </div>
+
+      <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
         {links.map((item) => {
           const Icon = item.icon;
           return (
@@ -76,34 +90,54 @@ export const AdminSidebar: React.FC = () => {
               to={item.href}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-xl text-xs transition-colors',
+                  'flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs transition-all group active:scale-98',
                   isActive
-                    ? 'bg-brand-yellow-tint text-amber-900 dark:bg-amber-950/50 dark:text-brand-yellow font-bold border-l-4 border-brand-yellow shadow-xs'
-                    : 'font-semibold text-slate-600 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:bg-slate-800/60'
+                    ? 'bg-[#09351a] text-white font-bold border-l-4 border-[#f5c518] shadow-sm'
+                    : 'font-semibold text-emerald-100/80 hover:bg-white/10 hover:text-white'
                 )
               }
             >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span>{item.name}</span>
+              {({ isActive }) => (
+                <>
+                  <div className="flex items-center gap-3 truncate">
+                    <Icon
+                      className={cn(
+                        'w-4 h-4 shrink-0 transition-transform group-hover:scale-110',
+                        isActive ? 'text-[#f5c518]' : 'text-emerald-200/75 group-hover:text-white'
+                      )}
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </div>
+                  {isActive && (
+                    <span className="w-2 h-2 rounded-full bg-[#f5c518] shadow-xs shrink-0 ml-2" />
+                  )}
+                </>
+              )}
             </NavLink>
           );
         })}
       </nav>
 
       {/* Admin Profile Footer */}
-      <div className="p-4 border-t border-slate-100 dark:border-slate-800">
-        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
-          <div className="truncate pr-2">
-            <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-              {user?.full_name?.replace(/materadmin/gi, 'masteradmin') || 'masteradmin'}
-            </p>
-            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
-              Super Admin
-            </p>
+      <div className="p-3 border-t border-[#09351a] bg-[#0a3a1d]">
+        <div className="p-2.5 rounded-xl bg-[#082e17] border border-emerald-800/60 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 truncate">
+            <div className="w-8 h-8 rounded-full bg-[#f5c518] text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-sm ring-2 ring-[#f5c518]/30">
+              {(displayName.charAt(0) || 'M').toUpperCase()}
+            </div>
+            <div className="truncate">
+              <p className="text-xs font-bold text-white truncate">{displayName}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#f5c518]" />
+                <span className="text-[10px] text-amber-300 font-bold uppercase tracking-wider truncate">
+                  Super Admin
+                </span>
+              </div>
+            </div>
           </div>
           <button
             onClick={() => logout()}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+            className="p-1.5 rounded-lg text-emerald-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
             title="Log out"
           >
             <LogOut className="w-4 h-4" />

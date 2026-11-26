@@ -36,6 +36,20 @@ export const AuthCallback: React.FC = () => {
           user.user_metadata?.role === 'admin' ||
           user.user_metadata?.role === 'super_admin';
 
+        let isInstructor = false;
+        if (!isAdmin) {
+          try {
+            const { data: existingProf } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('id', user.id)
+              .maybeSingle();
+            if (existingProf?.role === 'instructor' || user.user_metadata?.role === 'instructor') {
+              isInstructor = true;
+            }
+          } catch (e) {}
+        }
+
         // 2. Ensure profile exists in public.profiles for Google sign-in user
         try {
           const userMeta = user.user_metadata || {};
@@ -51,7 +65,7 @@ export const AuthCallback: React.FC = () => {
                 id: user.id,
                 email: (user.email || '').toLowerCase(),
                 full_name: fullName,
-                role: isAdmin ? 'super_admin' : 'student',
+                role: isAdmin ? 'super_admin' : isInstructor ? 'instructor' : 'student',
               },
               { onConflict: 'id', ignoreDuplicates: true }
             );
@@ -80,6 +94,8 @@ export const AuthCallback: React.FC = () => {
         if (isMounted) {
           if (isAdmin) {
             navigate('/admin/dashboard', { replace: true });
+          } else if (isInstructor) {
+            navigate('/instructor/dashboard', { replace: true });
           } else {
             navigate('/student/dashboard', { replace: true });
           }

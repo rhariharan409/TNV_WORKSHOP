@@ -3,7 +3,7 @@
 // Comprehensive TypeScript Definitions for all 32 Database Entities
 // ==============================================================================
 
-export type UserRole = 'student' | 'admin' | 'super_admin';
+export type UserRole = 'student' | 'instructor' | 'admin' | 'super_admin';
 
 export type EnrollmentStatus =
   | 'registered'
@@ -40,7 +40,7 @@ export type ExamStatus =
 
 export type AttendanceStatus = 'present' | 'absent' | 'excused';
 
-export type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'replied';
 
 export type FeedbackCategory =
   | 'complaint'
@@ -137,6 +137,8 @@ export interface Course {
   status?: 'draft' | 'published' | 'archived';
   order_index: number;
   is_published: boolean;
+  is_paid?: boolean;
+  price?: number;
   created_by?: string | null;
   published_at?: string | null;
   published_by?: string | null;
@@ -155,7 +157,7 @@ export interface CourseEnrollment {
   student_id: string;
   progress_percentage: number;
   is_completed: boolean;
-  status?: 'active' | 'completed' | 'pending_approval' | 'rejected';
+  status?: 'active' | 'completed' | 'pending_approval' | 'rejected' | 'payment_pending' | 'payment_verification_pending' | 'suspended';
   enrolled_at: string;
   completed_at?: string | null;
   completed_sessions?: number;
@@ -505,6 +507,15 @@ export interface CertificateTemplate {
   updated_at?: string;
 }
 
+export interface CourseInstructor {
+  id: string;
+  course_id: string;
+  instructor_id: string;
+  created_at?: string;
+  course?: Course;
+  instructor?: Profile;
+}
+
 export interface Feedback {
   id: string;
   student_id: string;
@@ -515,8 +526,24 @@ export interface Feedback {
   admin_response?: string | null;
   responded_by?: string | null;
   resolved_at?: string | null;
+  attachments?: string[] | null;
   created_at: string;
   student?: Profile;
+}
+
+export interface NotesRequest {
+  id: string;
+  student_id: string;
+  live_session_id?: string;
+  course_id?: string;
+  session_title?: string;
+  course_title?: string;
+  message: string;
+  status: 'pending' | 'fulfilled' | 'rejected';
+  admin_reply?: string | null;
+  created_at: string;
+  student?: Profile;
+  live_session?: LiveSession;
 }
 
 export interface Notification {

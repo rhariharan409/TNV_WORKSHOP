@@ -28,7 +28,7 @@ export const Button: React.FC<ButtonProps> = ({
     primary:
       'bg-[#1b6b3a] hover:bg-[#14532d] text-white shadow-md hover:shadow-lg focus:ring-[#1b6b3a] border border-transparent',
     yellow:
-      'bg-[#eab308] hover:bg-amber-500 text-slate-900 font-bold shadow-md hover:shadow-lg focus:ring-amber-500 border border-transparent',
+      'bg-[#f5c518] hover:bg-[#e6b800] text-slate-950 font-bold shadow-md hover:shadow-lg focus:ring-[#f5c518] border border-transparent',
     secondary:
       'bg-[#eef3f8] hover:bg-slate-200 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 focus:ring-slate-500 border border-transparent',
     outline:

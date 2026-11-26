@@ -35,7 +35,12 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
     case 'evaluated':
     case 'present':
     case 'resolved':
+    case 'replied':
       variant = 'success';
+      break;
+
+    case 'instructor':
+      variant = 'brand';
       break;
 
     case 'payment_pending':

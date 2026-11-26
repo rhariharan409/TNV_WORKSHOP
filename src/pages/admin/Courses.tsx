@@ -260,6 +260,9 @@ export const AdminCourses: React.FC = () => {
                       className="w-full h-full object-contain max-h-40 transition-transform duration-300 hover:scale-105"
                     />
                     <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                      <Badge variant={course.is_paid ? 'warning' : 'outline'} className="font-bold shadow-xs bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs">
+                        {course.is_paid ? `PAID • ₹${course.price || 0}` : 'FREE'}
+                      </Badge>
                       <Badge variant={isPublished ? 'success' : 'warning'} className="font-bold shadow-xs">
                         {isPublished ? 'PUBLISHED' : 'DRAFT'}
                       </Badge>

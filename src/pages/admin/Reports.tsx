@@ -246,14 +246,26 @@ export const AdminReports: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-          <FileSpreadsheet className="w-8 h-8 text-brand-600 dark:text-brand-400" />
-          Reports & Analytics
-        </h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Select any course to view detailed student cohort performance, telemetry audits, and download course CSV spreadsheets.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <FileSpreadsheet className="w-8 h-8 text-[#1b6b3a] dark:text-brand-400" />
+            <span>Reports & Analytics</span>
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Select any course to view detailed student cohort performance, telemetry audits, and download course CSV spreadsheets.
+          </p>
+        </div>
+
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleExportGlobalEnrollments}
+          leftIcon={<Download className="w-4 h-4" />}
+          className="shadow-md"
+        >
+          Download Report
+        </Button>
       </div>
 
       {/* ========================================================== */}
@@ -422,7 +434,7 @@ export const AdminReports: React.FC = () => {
                 leftIcon={<Download className="w-4 h-4" />}
                 className="font-bold shadow-md shadow-brand-600/20"
               >
-                Download Course Report (CSV)
+                Download Report (CSV)
               </Button>
             </div>
 

@@ -76,7 +76,7 @@ export const PublicNavbar: React.FC = () => {
           </button>
 
           {isAuthenticated ? (
-            <Link to={role === 'admin' || role === 'super_admin' ? '/admin/dashboard' : '/student/dashboard'}>
+            <Link to={role === 'admin' || role === 'super_admin' ? '/admin/dashboard' : role === 'instructor' ? '/instructor/dashboard' : '/student/dashboard'}>
               <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-4 h-4" />}>
                 Go to Portal
               </Button>
@@ -130,7 +130,7 @@ export const PublicNavbar: React.FC = () => {
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
             {isAuthenticated ? (
               <Link
-                to={role === 'admin' || role === 'super_admin' ? '/admin/dashboard' : '/student/dashboard'}
+                to={role === 'admin' || role === 'super_admin' ? '/admin/dashboard' : role === 'instructor' ? '/instructor/dashboard' : '/student/dashboard'}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <Button variant="primary" size="sm" className="w-full">

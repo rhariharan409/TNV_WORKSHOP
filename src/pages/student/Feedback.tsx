@@ -9,7 +9,18 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Badge } from '../../components/ui/Badge';
-import { MessageSquareWarning, Send, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
+import {
+  MessageSquareWarning,
+  Send,
+  CheckCircle2,
+  MessageSquare,
+  AlertCircle,
+  Paperclip,
+  X,
+  FileText,
+  ExternalLink,
+  Image as ImageIcon,
+} from 'lucide-react';
 
 export const FeedbackPage: React.FC = () => {
   const { user } = useAuth();
@@ -17,9 +28,14 @@ export const FeedbackPage: React.FC = () => {
   const [category, setCategory] = useState<Feedback['category']>('improvement');
   const [subject, setSubject] = useState('Course Content');
   const [description, setDescription] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const MAX_FILES = 3;
+  const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
   const loadData = async () => {
     if (!user?.id) return;
@@ -32,18 +48,75 @@ export const FeedbackPage: React.FC = () => {
     loadData();
   }, [user?.id]);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileError('');
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    if (selectedFiles.length + files.length > MAX_FILES) {
+      setFileError(`You can attach up to ${MAX_FILES} files in total.`);
+      return;
+    }
+
+    const validNewFiles: File[] = [];
+    for (const f of files) {
+      if (f.size > MAX_SIZE_BYTES) {
+        setFileError(`"${f.name}" exceeds the 5 MB file size limit.`);
+        return;
+      }
+      const isAllowedType =
+        f.type.startsWith('image/') || f.type === 'application/pdf';
+      if (!isAllowedType) {
+        setFileError(`"${f.name}" is not supported. Please upload Images (PNG, JPG) or PDF files.`);
+        return;
+      }
+      validNewFiles.push(f);
+    }
+
+    setSelectedFiles((prev) => [...prev, ...validNewFiles]);
+    e.target.value = ''; // Reset input
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setFileError('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id || !subject.trim() || !description.trim()) return;
 
     setIsSubmitting(true);
-    await dataProvider.submitFeedback(user.id, category, subject, description);
-    setIsSubmitting(false);
-    setSuccess(true);
-    setSubject('Course Content');
-    setDescription('');
-    await loadData();
-    setTimeout(() => setSuccess(false), 3000);
+    setFileError('');
+    try {
+      // 1. Upload files to complaint-attachments storage bucket
+      let uploadedUrls: string[] = [];
+      if (selectedFiles.length > 0) {
+        uploadedUrls = await Promise.all(
+          selectedFiles.map((f) => dataProvider.uploadComplaintAttachment(f))
+        );
+      }
+
+      // 2. Submit ticket with attachment URLs
+      await dataProvider.submitFeedback(
+        user.id,
+        category,
+        subject,
+        description,
+        uploadedUrls
+      );
+
+      setSuccess(true);
+      setSubject('Course Content');
+      setDescription('');
+      setSelectedFiles([]);
+      await loadData();
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      setFileError(`Submission failed: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -68,7 +141,7 @@ export const FeedbackPage: React.FC = () => {
         {success && (
           <div className="p-3.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-semibold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4" />
-            <span>Ticket successfully submitted. Administration will review and respond.</span>
+            <span>Ticket successfully submitted with attachments. Administration will review and respond.</span>
           </div>
         )}
 
@@ -118,6 +191,78 @@ export const FeedbackPage: React.FC = () => {
             ></textarea>
           </div>
 
+          {/* Supporting Attachments Section */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5 text-brand-600" />
+                Supporting Files / Screenshots (Optional)
+              </label>
+              <span className="text-[11px] text-slate-400">
+                {selectedFiles.length}/{MAX_FILES} files (Max 5 MB each • Images/PDF)
+              </span>
+            </div>
+
+            {selectedFiles.length < MAX_FILES && (
+              <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-brand-500 hover:bg-brand-50/20 dark:hover:bg-brand-950/20 cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors">
+                <Paperclip className="w-4 h-4 text-brand-600" />
+                <span>Click to attach screenshot or PDF document</span>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+            )}
+
+            {fileError && (
+              <div className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 font-semibold">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>{fileError}</span>
+              </div>
+            )}
+
+            {/* Selected files preview */}
+            {selectedFiles.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {selectedFiles.map((file, idx) => {
+                  const isImage = file.type.startsWith('image/');
+                  const sizeKB = (file.size / 1024).toFixed(1);
+
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        {isImage ? (
+                          <ImageIcon className="w-4 h-4 text-brand-600 shrink-0" />
+                        ) : (
+                          <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                        )}
+                        <span className="font-semibold truncate text-slate-800 dark:text-slate-200">
+                          {file.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 shrink-0">
+                          ({sizeKB} KB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFile(idx)}
+                        className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ml-2 shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <Button
             type="submit"
             variant="primary"
@@ -125,7 +270,7 @@ export const FeedbackPage: React.FC = () => {
             isLoading={isSubmitting}
             rightIcon={<Send className="w-4 h-4" />}
           >
-            Submit Ticket
+            Submit Complaint
           </Button>
         </form>
       </Card>
@@ -155,6 +300,30 @@ export const FeedbackPage: React.FC = () => {
                 <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg">
                   {fb.description}
                 </p>
+
+                {/* Attachments preview */}
+                {fb.attachments && fb.attachments.length > 0 && (
+                  <div className="pt-1">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1.5">
+                      Attached Files:
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {fb.attachments.map((url, i) => (
+                        <a
+                          key={i}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-xs font-semibold text-brand-600 dark:text-brand-400 border border-slate-200 dark:border-slate-700 hover:border-brand-500 transition-colors shadow-xs"
+                        >
+                          <Paperclip className="w-3.5 h-3.5" />
+                          <span>Attachment {i + 1}</span>
+                          <ExternalLink className="w-3 h-3 text-slate-400" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {fb.admin_response && (
                   <div className="p-3.5 rounded-xl bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-900/60 text-xs space-y-1">

@@ -16,6 +16,9 @@ import {
   FileCheck2,
   Eye,
   LayoutDashboard,
+  GraduationCap,
+  FolderGit2,
+  Shield,
 } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 
@@ -59,9 +62,15 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
     user?.email?.toLowerCase() === 'masteradmin@gmail.com' ||
     user?.email?.toLowerCase() === 'materadmin@gmail.com';
 
-  const isInAdminPortal = location.pathname.startsWith('/admin');
+  const isUserInstructor = !isUserAdmin && (role === 'instructor' || user?.role === 'instructor');
 
-  const rawName = user?.full_name || (isUserAdmin ? 'masteradmin' : 'Student');
+  const isInAdminPortal = location.pathname.startsWith('/admin');
+  const isInInstructorPortal = location.pathname.startsWith('/instructor');
+
+  const roleHierarchyLabel = isUserAdmin ? 'Admin' : isUserInstructor ? 'Instructor' : 'Student';
+  const roleHierarchyTier = isUserAdmin ? 'Tier 1' : isUserInstructor ? 'Tier 2' : 'Tier 3';
+
+  const rawName = user?.full_name || (isUserAdmin ? 'masteradmin' : isUserInstructor ? 'Instructor' : 'Student');
   const displayName = rawName.replace(/materadmin/gi, 'masteradmin');
   const displayEmail = (user?.email || '').replace(/materadmin/gi, 'masteradmin');
 
@@ -76,6 +85,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
             placeholder={
               isInAdminPortal
                 ? 'Search students, courses, submissions...'
+                : isInInstructorPortal
+                ? 'Search assigned courses, materials, students...'
                 : 'Search my modules, sessions, notes...'
             }
             className="w-full h-9 pl-9 pr-4 rounded-full bg-slate-100/70 border-none text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b6b3a] dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -144,8 +155,22 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
               <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
                 {displayName}
               </p>
-              <p className="text-[10px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wider font-extrabold">
-                {isUserAdmin ? 'Super Admin' : 'Student'}
+              <p className="text-[10px] uppercase tracking-wider font-extrabold flex items-center gap-1 mt-0.5">
+                <span
+                  className={
+                    isUserAdmin
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : isUserInstructor
+                      ? 'text-[#1b6b3a] dark:text-emerald-400'
+                      : 'text-blue-600 dark:text-blue-400'
+                  }
+                >
+                  {roleHierarchyLabel}
+                </span>
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <span className="text-slate-400 font-semibold text-[9px]">
+                  {roleHierarchyTier}
+                </span>
               </p>
             </div>
           </button>
@@ -155,9 +180,23 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
               <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 rounded-xl mb-1">
                 <p className="text-xs font-black text-slate-900 dark:text-white">{displayName}</p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{displayEmail}</p>
-                <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-[#1b6b3a] dark:text-emerald-400 uppercase">
-                  {isUserAdmin ? <ShieldCheck className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
-                  <span>{isUserAdmin ? 'Super Admin Console' : 'Student Portal'}</span>
+                <div className="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase">
+                  {isUserAdmin ? (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                      <span className="text-amber-700 dark:text-amber-400">Admin Console</span>
+                    </>
+                  ) : isUserInstructor ? (
+                    <>
+                      <GraduationCap className="w-3.5 h-3.5 text-[#1b6b3a]" />
+                      <span className="text-[#1b6b3a] dark:text-emerald-400">Instructor Portal</span>
+                    </>
+                  ) : (
+                    <>
+                      <User className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-blue-700 dark:text-blue-400">Student Portal</span>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -210,6 +249,53 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
                         <span>View Student Perspective</span>
                       </Link>
                     </div>
+                  </>
+                ) : isUserInstructor ? (
+                  <>
+                    <Link
+                      to="/instructor/dashboard"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-white bg-[#1b6b3a] hover:bg-[#14532d] rounded-xl shadow-sm transition-all"
+                    >
+                      <LayoutDashboard className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>Instructor Dashboard</span>
+                    </Link>
+
+                    <Link
+                      to="/instructor/courses"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded-lg dark:text-slate-200 dark:hover:bg-slate-800 font-semibold"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>My Assigned Courses</span>
+                    </Link>
+
+                    <Link
+                      to="/instructor/materials"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded-lg dark:text-slate-200 dark:hover:bg-slate-800 font-semibold"
+                    >
+                      <FolderGit2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Learning Materials</span>
+                    </Link>
+
+                    <Link
+                      to="/instructor/submissions"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded-lg dark:text-slate-200 dark:hover:bg-slate-800 font-semibold"
+                    >
+                      <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Submissions & Grading</span>
+                    </Link>
+
+                    <Link
+                      to="/instructor/examinations"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded-lg dark:text-slate-200 dark:hover:bg-slate-800 font-semibold"
+                    >
+                      <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Examinations</span>
+                    </Link>
                   </>
                 ) : (
                   <Link

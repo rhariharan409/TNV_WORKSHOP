@@ -61,6 +61,8 @@ export const AdminCourseCreate: React.FC = () => {
   const [instructorName, setInstructorName] = useState(user?.full_name || 'Thamilaran');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [workshopId, setWorkshopId] = useState<string>('');
+  const [isPaid, setIsPaid] = useState(false);
+  const [price, setPrice] = useState('0');
 
   // Step 2: Content Structure (Modules & Sessions)
   const [modules, setModules] = useState<
@@ -160,6 +162,8 @@ export const AdminCourseCreate: React.FC = () => {
           setInstructorName(c.instructor_name || user?.full_name || 'Dr. T. N. Venkatesh');
           setThumbnailUrl(c.thumbnail_url || '');
           setWorkshopId(c.workshop_id || '');
+          setIsPaid(Boolean(c.is_paid));
+          setPrice(String(c.price || 0));
 
           if (c.modules) {
             setModules(
@@ -225,6 +229,8 @@ export const AdminCourseCreate: React.FC = () => {
         created_by: user?.id,
         is_published: false,
         status: 'draft',
+        is_paid: isPaid,
+        price: isPaid ? (parseFloat(price) || 0) : 0,
       };
 
       let currentId = courseId;
@@ -272,6 +278,8 @@ export const AdminCourseCreate: React.FC = () => {
         created_by: user?.id,
         is_published: true,
         status: 'published',
+        is_paid: isPaid,
+        price: isPaid ? (parseFloat(price) || 0) : 0,
       };
 
       let currentId = courseId;
@@ -984,6 +992,52 @@ export const AdminCourseCreate: React.FC = () => {
               value={thumbnailUrl}
               onChange={(e) => setThumbnailUrl(e.target.value)}
             />
+
+            {/* Course Access & Pricing Selector */}
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-3">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                Course Access & Fee Structure *
+              </label>
+              <div className="flex items-center gap-6">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <input
+                    type="radio"
+                    name="pricing_type"
+                    checked={!isPaid}
+                    onChange={() => setIsPaid(false)}
+                    className="text-[#1b6b3a] focus:ring-[#1b6b3a] h-4 w-4"
+                  />
+                  <span>Free Course (Open Enrollment)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <input
+                    type="radio"
+                    name="pricing_type"
+                    checked={isPaid}
+                    onChange={() => setIsPaid(true)}
+                    className="text-[#1b6b3a] focus:ring-[#1b6b3a] h-4 w-4"
+                  />
+                  <span>Paid Course (Fee Required)</span>
+                </label>
+              </div>
+
+              {isPaid && (
+                <div className="pt-2 max-w-xs animate-in fade-in duration-200">
+                  <Input
+                    label="Course Price (INR ₹) *"
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 1999"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Enrolling students will be required to submit payment verification before course content unlocks.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">

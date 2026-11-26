@@ -33,6 +33,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (allowedRoles && !allowedRoles.includes(role)) {
+    // If instructor tries to visit unauthorized routes, redirect to instructor dashboard
+    if (role === 'instructor') {
+      return <Navigate to="/instructor/dashboard" replace />;
+    }
     // If student tries to visit admin routes, redirect to student dashboard
     if (role === 'student') {
       return <Navigate to="/student/dashboard" replace />;

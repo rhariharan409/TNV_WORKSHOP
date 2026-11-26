@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
+import { Modal } from '../../components/ui/Modal';
 import {
   BookOpen,
   ArrowRight,
@@ -15,12 +16,16 @@ import {
   Compass,
   GraduationCap,
   Sparkles,
+  AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 
 export const MyCourses: React.FC = () => {
   const { user } = useAuth();
   const [courseEnrollments, setCourseEnrollments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [unenrollTarget, setUnenrollTarget] = useState<{ id: string; courseId: string; title: string } | null>(null);
+  const [isUnenrolling, setIsUnenrolling] = useState(false);
 
   const loadData = async () => {
     if (!user?.id) return;
@@ -33,6 +38,20 @@ export const MyCourses: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [user?.id]);
+
+  const handleConfirmUnenroll = async () => {
+    if (!unenrollTarget || !user?.id) return;
+    setIsUnenrolling(true);
+    try {
+      await dataProvider.unenrollCourse(unenrollTarget.id, user.id, unenrollTarget.courseId);
+      setUnenrollTarget(null);
+      await loadData();
+    } catch (err: any) {
+      alert(`Failed to unenroll: ${err.message}`);
+    } finally {
+      setIsUnenrolling(false);
+    }
+  };
 
   const totalEnrollments = courseEnrollments.length;
 
@@ -101,6 +120,9 @@ export const MyCourses: React.FC = () => {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <Badge variant="brand">{course?.category || 'Technical Track'}</Badge>
+                          <Badge variant={course?.is_paid ? 'warning' : 'outline'}>
+                            {course?.is_paid ? `Paid • ₹${course.price || 0}` : 'Free'}
+                          </Badge>
                           <Badge variant={isCompleted ? 'success' : progress > 0 ? 'brand' : 'outline'}>
                             {isCompleted ? 'COMPLETED' : progress > 0 ? 'IN PROGRESS' : 'NOT STARTED'}
                           </Badge>
@@ -114,7 +136,17 @@ export const MyCourses: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setUnenrollTarget({ id: enr.id, courseId, title: courseTitle })}
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900 text-xs font-semibold"
+                        leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                      >
+                        Unenroll from Course
+                      </Button>
+
                       <Link to={`/student/courses/${courseId}`}>
                         <Button variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
                           Continue Learning
@@ -168,6 +200,49 @@ export const MyCourses: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Unenroll Confirmation Modal */}
+      <Modal
+        isOpen={Boolean(unenrollTarget)}
+        onClose={() => setUnenrollTarget(null)}
+        title="Unenroll from Course"
+        description="Please confirm your unenrollment decision"
+        maxWidth="sm"
+      >
+        <div className="space-y-4 py-2 text-xs">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-bold text-sm block">Are you sure? Your progress may be lost.</span>
+              <p className="text-[11px] leading-relaxed">
+                You are about to unenroll from <strong>"{unenrollTarget?.title}"</strong>. If you unenroll, your progress percentage and attendance records may need to be reset.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isUnenrolling}
+              onClick={() => setUnenrollTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              isLoading={isUnenrolling}
+              onClick={handleConfirmUnenroll}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+            >
+              Confirm Unenroll
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

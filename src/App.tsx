@@ -9,6 +9,7 @@ import { ConfigBanner } from './components/common/ConfigBanner';
 import { PublicLayout } from './layouts/PublicLayout';
 import { StudentLayout } from './layouts/StudentLayout';
 import { AdminLayout } from './layouts/AdminLayout';
+import { InstructorLayout } from './layouts/InstructorLayout';
 
 // Public Pages
 import { LandingPage } from './pages/LandingPage';
@@ -51,9 +52,21 @@ import { AdminAttendance } from './pages/admin/Attendance';
 import { AdminCertificates } from './pages/admin/Certificates';
 import { AdminCertificateTemplates } from './pages/admin/CertificateTemplates';
 import { AdminFeedback } from './pages/admin/Feedback';
+import { AdminInstructors } from './pages/admin/Instructors';
 import { AdminReports } from './pages/admin/Reports';
 import { AdminSettingsPage } from './pages/admin/Settings';
 import { AdminNotifications } from './pages/admin/Notifications';
+
+// Instructor Pages
+import { InstructorDashboard } from './pages/instructor/Dashboard';
+import { InstructorCourses } from './pages/instructor/Courses';
+import { InstructorMaterials } from './pages/instructor/Materials';
+import { InstructorAssignments } from './pages/instructor/Assignments';
+import { InstructorSubmissions } from './pages/instructor/Submissions';
+import { InstructorExaminations } from './pages/instructor/Examinations';
+import { InstructorAttendance } from './pages/instructor/Attendance';
+import { InstructorStudents } from './pages/instructor/Students';
+import { InstructorLiveSessions } from './pages/instructor/LiveSessions';
 
 export function App() {
   return (
@@ -129,6 +142,7 @@ export function App() {
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="students" element={<AdminStudents />} />
+              <Route path="instructors" element={<AdminInstructors />} />
               <Route path="courses" element={<AdminCourses />} />
               <Route path="courses/create" element={<AdminCourseCreate />} />
               <Route path="courses/edit/:courseId" element={<AdminCourseCreate />} />
@@ -144,6 +158,27 @@ export function App() {
               <Route path="notifications" element={<AdminNotifications />} />
               <Route path="reports" element={<AdminReports />} />
               <Route path="settings" element={<AdminSettingsPage />} />
+            </Route>
+
+            {/* INSTRUCTOR PORTAL (Protected, Role: instructor / admin / super_admin) */}
+            <Route
+              path="/instructor"
+              element={
+                <ProtectedRoute allowedRoles={['instructor', 'admin', 'super_admin']}>
+                  <InstructorLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/instructor/dashboard" replace />} />
+              <Route path="dashboard" element={<InstructorDashboard />} />
+              <Route path="courses" element={<InstructorCourses />} />
+              <Route path="materials" element={<InstructorMaterials />} />
+              <Route path="assignments" element={<InstructorAssignments />} />
+              <Route path="submissions" element={<InstructorSubmissions />} />
+              <Route path="examinations" element={<InstructorExaminations />} />
+              <Route path="live-sessions" element={<InstructorLiveSessions />} />
+              <Route path="attendance" element={<InstructorAttendance />} />
+              <Route path="students" element={<InstructorStudents />} />
             </Route>
 
             {/* Fallback to home */}

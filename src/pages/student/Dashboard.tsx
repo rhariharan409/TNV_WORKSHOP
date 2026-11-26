@@ -12,7 +12,7 @@ import {
   AdminSettings,
   SessionProgress,
 } from '../../types/database';
-import { formatCurrency, formatDate } from '../../lib/utils';
+import { formatCurrency, formatDate, cn } from '../../lib/utils';
 import { downloadCertificate } from '../../lib/certificateGenerator';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -130,27 +130,46 @@ export const StudentDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      {/* 1. WELCOME & ACADEMIC HEADER */}
-      <div className="rounded-3xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Welcome back, {user?.full_name}!
-            </h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
-              Student
-            </span>
+    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+      {/* 1. WELCOME & ACADEMIC HEADER (Matching Referral Image) */}
+      <div className="rounded-3xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-slate-900 p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
+        <div className="flex items-start sm:items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#1b6b3a] text-white font-black text-2xl flex items-center justify-center shrink-0 shadow-md ring-4 ring-[#1b6b3a]/20">
+            {user?.full_name?.charAt(0).toUpperCase() || 'S'}
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            {user?.college_name || 'Engineering Institution'} • {user?.department || 'Engineering'} • {user?.year_of_study || 'Student'}
-          </p>
+
+          <div className="space-y-1">
+            <p className="font-tamil font-bold text-sm text-[#1b6b3a] dark:text-emerald-400">
+              வணக்கம், {user?.full_name || 'Student'}!
+            </p>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+              Welcome, {user?.full_name || 'Student'}!
+            </h1>
+            <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+              {user?.email} • {user?.college_name || 'Engineering Institution'}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                <span className="w-2 h-2 rounded-full bg-[#1b6b3a]"></span>
+                Enrolled Student
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+                Academic Year 2026-2027
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Quick Links */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <Link to="/student/available-courses">
-            <Button variant="outline" size="sm" leftIcon={<Compass className="w-4 h-4 text-brand-600" />}>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Compass className="w-4 h-4 text-[#1b6b3a]" />}
+              className="border-slate-300 hover:border-[#1b6b3a]"
+            >
               Explore Courses
             </Button>
           </Link>
@@ -158,22 +177,86 @@ export const StudentDashboard: React.FC = () => {
             href={settings?.whatsapp_group_url || 'https://chat.whatsapp.com'}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#f5c518] hover:bg-[#e6b800] text-slate-950 font-bold text-xs shadow-sm transition-all"
           >
             <MessageCircle className="w-4 h-4" />
-            <span>Join WhatsApp</span>
+            <span>Join Community</span>
           </a>
         </div>
       </div>
 
-      {/* 2. DYNAMIC METRICS & PROGRESS CARDS */}
+      {/* 2. VERIFICATION & CURRICULUM MILESTONE STEPS (Matching Referral Image) */}
+      <Card className="p-6 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+            <span>Your Academic Milestone Progress</span>
+          </h2>
+          <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300">
+            Active Progress
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            {
+              name: 'Enrolled Courses',
+              status: `${metrics.totalEnrolledCourses} Active`,
+              done: metrics.totalEnrolledCourses > 0,
+            },
+            {
+              name: 'Live Attendance',
+              status: `${metrics.completedSessions} Attended`,
+              done: metrics.completedSessions > 0,
+            },
+            {
+              name: 'Assignments',
+              status: metrics.pendingAssignments === 0 && metrics.totalEnrolledCourses > 0 ? 'All Completed' : `${metrics.pendingAssignments} Pending`,
+              done: metrics.pendingAssignments === 0 && metrics.totalEnrolledCourses > 0,
+            },
+            {
+              name: 'Technical Exam',
+              status: metrics.upcomingExams === 0 && metrics.totalEnrolledCourses > 0 ? 'Passed' : `${metrics.upcomingExams} Remaining`,
+              done: metrics.upcomingExams === 0 && metrics.totalEnrolledCourses > 0,
+            },
+            {
+              name: 'Verified Certificate',
+              status: metrics.certificatesEarned > 0 ? 'Issued & Verified' : 'In Progress',
+              done: metrics.certificatesEarned > 0,
+            },
+          ].map((step, idx) => (
+            <div
+              key={idx}
+              className="flex flex-col items-center text-center space-y-2 p-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 transition-all hover:bg-emerald-50/30"
+            >
+              <div
+                className={cn(
+                  'w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-transform',
+                  step.done
+                    ? 'bg-[#1b6b3a] text-white shadow-xs'
+                    : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                )}
+              >
+                {step.done ? <CheckCircle2 className="w-5 h-5 text-white" /> : idx + 1}
+              </div>
+              <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{step.name}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{step.status}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* 3. DYNAMIC METRICS WITH GREEN & YELLOW ACCENT BORDERS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <Card className="p-5 space-y-2">
+        <Card accent="green" className="p-5 space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Enrolled Courses</span>
-            <BookOpen className="w-4 h-4 text-brand-600" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Enrolled Courses
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-[#1b6b3a] flex items-center justify-center">
+              <BookOpen className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+          <div className="text-2xl font-black text-slate-900 dark:text-white">
             {metrics.totalEnrolledCourses}
           </div>
           <p className="text-xs text-slate-500">
@@ -181,24 +264,32 @@ export const StudentDashboard: React.FC = () => {
           </p>
         </Card>
 
-        <Card className="p-5 space-y-2">
+        <Card accent="yellow" className="p-5 space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Overall Progress</span>
-            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Overall Progress
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+              <Sparkles className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+          <div className="text-2xl font-black text-slate-900 dark:text-white">
             {metrics.overallProgress}%
           </div>
-          <ProgressBar value={metrics.overallProgress} size="sm" />
+          <ProgressBar value={metrics.overallProgress} size="sm" variant={metrics.overallProgress === 100 ? 'success' : 'brand'} />
           <p className="text-[11px] text-slate-400">{metrics.completedSessions} sessions completed</p>
         </Card>
 
-        <Card className="p-5 space-y-2">
+        <Card accent="green" className="p-5 space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Pending Tasks</span>
-            <FileCheck2 className="w-4 h-4 text-purple-600" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Pending Tasks
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-[#1b6b3a] flex items-center justify-center">
+              <FileCheck2 className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+          <div className="text-2xl font-black text-slate-900 dark:text-white">
             {metrics.pendingAssignments}
           </div>
           <p className="text-xs text-slate-500">
@@ -206,21 +297,25 @@ export const StudentDashboard: React.FC = () => {
           </p>
         </Card>
 
-        <Card className="p-5 space-y-2">
+        <Card accent="yellow" className="p-5 space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Certificates</span>
-            <Award className="w-4 h-4 text-amber-500" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Certificates
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+              <Award className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+          <div className="text-2xl font-black text-slate-900 dark:text-white">
             {metrics.certificatesEarned}
           </div>
           <p className="text-xs text-slate-500">
             {metrics.certificatesEarned > 0 ? (
-              <Link to="/student/certificates" className="text-brand-600 font-bold hover:underline">
+              <Link to="/student/certificates" className="text-[#1b6b3a] font-bold hover:underline">
                 View Credentials →
               </Link>
             ) : (
-              'Complete courses to earn'
+              'Complete all sessions to unlock'
             )}
           </p>
         </Card>

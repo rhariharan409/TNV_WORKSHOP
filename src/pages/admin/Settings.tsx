@@ -225,7 +225,7 @@ export const AdminSettingsPage: React.FC = () => {
             className="font-bold shadow-md"
             leftIcon={<Save className="w-4 h-4" />}
           >
-            Save All Settings
+            Save Changes
           </Button>
         </div>
       </form>
