@@ -1,13 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dataProvider } from '../../lib/dataProvider';
 import { Course, Module, Session, CertificateTemplate, Examination } from '../../types/database';
 import { parseGoogleDriveLink, isValidGoogleDriveUrl } from '../../lib/utils';
+import {
+  parseQuestionsCSV,
+  downloadQuestionCSVTemplate,
+  ParsedQuestionRow,
+} from '../../lib/csvQuestionParser';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
+import { Modal } from '../../components/ui/Modal';
 import {
   ArrowLeft,
   ArrowRight,
@@ -39,6 +45,9 @@ import {
   Edit2,
   Pencil,
   GraduationCap,
+  Upload,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export const AdminCourseCreate: React.FC = () => {
@@ -91,6 +100,13 @@ export const AdminCourseCreate: React.FC = () => {
   const [qCorrect, setQCorrect] = useState<number>(0);
   const [qMarks, setQMarks] = useState('2');
   const [qError, setQError] = useState<string | null>(null);
+
+  // Step 3: CSV Batch Question Import State
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<ParsedQuestionRow[]>([]);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [isCsvImporting, setIsCsvImporting] = useState(false);
+  const csvFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Step 4: Certificate Template Selection
   const [certificateTemplates, setCertificateTemplates] = useState<CertificateTemplate[]>([]);
@@ -319,10 +335,10 @@ export const AdminCourseCreate: React.FC = () => {
     setQError(null);
 
     const txt = qText.trim();
-    const optA = qOptA.trim();
-    const optB = qOptB.trim();
-    const optC = qOptC.trim();
-    const optD = qOptD.trim();
+    const optA = String(qOptA ?? '').trim();
+    const optB = String(qOptB ?? '').trim();
+    const optC = String(qOptC ?? '').trim();
+    const optD = String(qOptD ?? '').trim();
     const marksNum = parseInt(qMarks, 10) || 2;
 
     if (!txt || !optA || !optB || !optC || !optD) {
@@ -399,6 +415,59 @@ export const AdminCourseCreate: React.FC = () => {
       setExamTotalMarks(String(sumMarks));
       const pct = parseInt(examPassingPercentage, 10) || 50;
       setExamPassingMarks(String(Math.ceil((sumMarks * pct) / 100)));
+    }
+  };
+
+  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const rows = parseQuestionsCSV(text);
+      if (rows.length === 0) {
+        alert('The CSV file appears to be empty or contains only the header row.');
+      }
+      setCsvPreview(rows);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportValidCSVToExam = () => {
+    const validRows = csvPreview.filter((r) => r.isValid);
+    if (validRows.length === 0) {
+      alert('No valid question rows found to import.');
+      return;
+    }
+
+    setIsCsvImporting(true);
+    try {
+      const newQuestions = validRows.map((r, i) => ({
+        id: `temp_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+        question_text: r.question,
+        options: [r.option_a, r.option_b, r.option_c, r.option_d],
+        correct_option_index: r.correct_option_index,
+        marks: r.marks || 2,
+      }));
+
+      const updated = [...examQuestions, ...newQuestions];
+      setExamQuestions(updated);
+
+      const sumMarks = updated.reduce((sum, q) => sum + (q.marks || 2), 0);
+      if (sumMarks > 0) {
+        setExamTotalMarks(String(sumMarks));
+        const pct = parseInt(examPassingPercentage, 10) || 50;
+        setExamPassingMarks(String(Math.ceil((sumMarks * pct) / 100)));
+      }
+
+      showSuccessBanner(`Successfully imported ${validRows.length} questions from CSV to examination!`);
+      setIsCsvModalOpen(false);
+      setCsvPreview([]);
+      setCsvFileName('');
+    } finally {
+      setIsCsvImporting(false);
     }
   };
 
@@ -2383,15 +2452,32 @@ export const AdminCourseCreate: React.FC = () => {
                   </span>
                 </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddSampleExamQuestion}
-                  leftIcon={<Sparkles className="w-3.5 h-3.5 text-amber-500" />}
-                >
-                  Add Sample Question
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCsvPreview([]);
+                      setCsvFileName('');
+                      setIsCsvModalOpen(true);
+                    }}
+                    leftIcon={<Upload className="w-3.5 h-3.5 text-[#1b6b3a]" />}
+                    className="font-bold border-[#1b6b3a]/30 text-[#1b6b3a] hover:bg-[#1b6b3a]/5"
+                  >
+                    Upload CSV Questions
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddSampleExamQuestion}
+                    leftIcon={<Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+                  >
+                    Add Sample Question
+                  </Button>
+                </div>
               </div>
 
               {/* Question Input Card */}
@@ -2963,6 +3049,168 @@ export const AdminCourseCreate: React.FC = () => {
           </div>
         </Card>
       )}
+
+      {/* CSV Batch Question Import Modal */}
+      <Modal
+        isOpen={isCsvModalOpen}
+        onClose={() => setIsCsvModalOpen(false)}
+        title="Upload Examination Questions via CSV"
+        description="Upload a CSV file containing questions, options (including numeric options like 2, 3, 44), correct answers, and marks."
+        maxWidth="3xl"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <FileSpreadsheet className="w-4 h-4 text-[#1b6b3a]" />
+                  CSV File Format Guidelines
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Required columns:{' '}
+                  <code className="font-mono bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-[10px]">
+                    question, option_a, option_b, option_c, option_d, correct, marks
+                  </code>
+                </p>
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
+                  ✓ Supports text and numeric options (e.g. 2, 3, 44, 200).
+                  ✓ Correct answer can be option letter (A, B, C, D) or the exact option value (e.g. 44).
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => downloadQuestionCSVTemplate('TNV_Course_Questions_Template.csv')}
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                className="font-bold shrink-0 text-xs"
+              >
+                Download Sample Template
+              </Button>
+            </div>
+
+            <div className="pt-2 flex flex-wrap items-center gap-3">
+              <input
+                ref={csvFileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleCsvFileChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => csvFileInputRef.current?.click()}
+                leftIcon={<Upload className="w-3.5 h-3.5" />}
+              >
+                Select CSV File
+              </Button>
+              {csvFileName && (
+                <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">
+                  {csvFileName} ({csvPreview.length} rows parsed)
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* CSV Preview Table */}
+          {csvPreview.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  Parsed Questions ({csvPreview.filter((r) => r.isValid).length} valid of {csvPreview.length} rows)
+                </span>
+
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={handleImportValidCSVToExam}
+                  isLoading={isCsvImporting}
+                  disabled={csvPreview.filter((r) => r.isValid).length === 0}
+                  leftIcon={<Check className="w-3.5 h-3.5" />}
+                >
+                  Import {csvPreview.filter((r) => r.isValid).length} Questions to Exam
+                </Button>
+              </div>
+
+              <div className="max-h-64 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden overflow-x-auto text-xs">
+                <table className="w-full text-left text-slate-600 dark:text-slate-300">
+                  <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] font-bold uppercase text-slate-500 border-b border-slate-200 dark:border-slate-700 sticky top-0">
+                    <tr>
+                      <th className="p-2">Row</th>
+                      <th className="p-2">Question</th>
+                      <th className="p-2">Options (A, B, C, D)</th>
+                      <th className="p-2 text-center">Correct Answer</th>
+                      <th className="p-2 text-center">Marks</th>
+                      <th className="p-2 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {csvPreview.map((row) => (
+                      <tr key={row.rowNum} className={row.isValid ? '' : 'bg-rose-50/50 dark:bg-rose-950/20'}>
+                        <td className="p-2 font-mono font-bold text-slate-400">#{row.rowNum}</td>
+                        <td className="p-2 font-semibold max-w-[200px] truncate" title={row.question}>
+                          {row.question}
+                        </td>
+                        <td className="p-2 text-[11px] max-w-[220px] truncate text-slate-500">
+                          A: {row.option_a} | B: {row.option_b} | C: {row.option_c} | D: {row.option_d}
+                        </td>
+                        <td className="p-2 font-bold text-center">
+                          <span className="text-emerald-700 dark:text-emerald-400 font-bold">{row.correct_raw}</span>{' '}
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            (Option {String.fromCharCode(65 + row.correct_option_index)})
+                          </span>
+                        </td>
+                        <td className="p-2 text-center font-semibold">{row.marks}</td>
+                        <td className="p-2 text-right">
+                          {row.isValid ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              Valid
+                            </span>
+                          ) : (
+                            <span
+                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 cursor-help"
+                              title={row.error}
+                            >
+                              {row.error || 'Invalid'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCsvModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            {csvPreview.length > 0 && csvPreview.filter((r) => r.isValid).length > 0 && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleImportValidCSVToExam}
+                isLoading={isCsvImporting}
+                leftIcon={<Check className="w-3.5 h-3.5" />}
+              >
+                Import {csvPreview.filter((r) => r.isValid).length} Questions to Exam
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

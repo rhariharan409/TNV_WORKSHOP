@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Examination, ExamQuestion } from '../../../types/database';
 import { dataProvider } from '../../../lib/dataProvider';
+import {
+  parseQuestionsCSV,
+  downloadQuestionCSVTemplate,
+  ParsedQuestionRow,
+} from '../../../lib/csvQuestionParser';
 import { Modal } from '../../ui/Modal';
 import { Button } from '../../ui/Button';
 import {
@@ -29,19 +34,6 @@ interface ManageQuestionsModalProps {
   onDuplicate: (examId: string) => void;
 }
 
-interface ParsedCSVRow {
-  rowNum: number;
-  question: string;
-  option_a: string;
-  option_b: string;
-  option_c: string;
-  option_d: string;
-  correct: string;
-  marks: number;
-  error?: string;
-  isValid: boolean;
-}
-
 export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
   isOpen,
   onClose,
@@ -67,7 +59,7 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
   const [isSavingQ, setIsSavingQ] = useState(false);
 
   // CSV Preview state
-  const [csvPreview, setCsvPreview] = useState<ParsedCSVRow[]>([]);
+  const [csvPreview, setCsvPreview] = useState<ParsedQuestionRow[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -219,19 +211,7 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
 
   // CSV Template Download
   const handleDownloadTemplate = () => {
-    const csvContent =
-      'question,option_a,option_b,option_c,option_d,correct,marks\n' +
-      '"What does ACID stand for in database transactions?","Atomicity, Consistency, Isolation, Durability","All Common Internet Data","Advanced Cache In Databases","None of the above","A",2\n' +
-      '"Which SQL clause is used to filter aggregated grouped records?","WHERE","HAVING","GROUP BY","ORDER BY","B",2\n';
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'TNV_Exam_Questions_Template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadQuestionCSVTemplate();
   };
 
   // CSV Parse implementation
@@ -243,81 +223,13 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      parseCSVText(text);
+      const rows = parseQuestionsCSV(text);
+      if (rows.length === 0) {
+        alert('The CSV file appears to be empty or contains only the header row.');
+      }
+      setCsvPreview(rows);
     };
     reader.readAsText(file);
-  };
-
-  const parseCSVText = (text: string) => {
-    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length <= 1) {
-      alert('The CSV file appears to be empty or contains only the header row.');
-      return;
-    }
-
-    const rows: ParsedCSVRow[] = [];
-    const correctMap: Record<string, number> = { a: 0, b: 1, c: 2, d: 3, '0': 0, '1': 1, '2': 2, '3': 3 };
-
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      // Regex parsing for quoted CSV values
-      const cols: string[] = [];
-      let inQuotes = false;
-      let currentVal = '';
-
-      for (let c = 0; c < line.length; c++) {
-        const char = line[c];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          cols.push(currentVal.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
-          currentVal = '';
-        } else {
-          currentVal += char;
-        }
-      }
-      cols.push(currentVal.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
-
-      const question = cols[0] || '';
-      const optA = cols[1] || '';
-      const optB = cols[2] || '';
-      const optC = cols[3] || '';
-      const optD = cols[4] || '';
-      const correctStr = (cols[5] || '').toLowerCase().trim();
-      const marks = parseInt(cols[6], 10) || 2;
-
-      let errorMsg: string | undefined = undefined;
-      let isValid = true;
-
-      if (!question || !optA || !optB || !optC || !optD) {
-        errorMsg = 'Missing question text or one of the 4 required options.';
-        isValid = false;
-      } else {
-        const opts = [optA.toLowerCase(), optB.toLowerCase(), optC.toLowerCase(), optD.toLowerCase()];
-        if (new Set(opts).size !== 4) {
-          errorMsg = 'Duplicated option texts found.';
-          isValid = false;
-        } else if (!(correctStr in correctMap)) {
-          errorMsg = 'Correct option must be A, B, C, or D.';
-          isValid = false;
-        }
-      }
-
-      rows.push({
-        rowNum: i + 1,
-        question,
-        option_a: optA,
-        option_b: optB,
-        option_c: optC,
-        option_d: optD,
-        correct: correctStr.toUpperCase(),
-        marks,
-        error: errorMsg,
-        isValid,
-      });
-    }
-
-    setCsvPreview(rows);
   };
 
   const handleImportValidCSV = async () => {
@@ -328,14 +240,12 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
       return;
     }
 
-    const correctMap: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, '0': 0, '1': 1, '2': 2, '3': 3 };
-
     setIsImporting(true);
     try {
       const payload = validRows.map((r) => ({
         question_text: r.question,
         options: [r.option_a, r.option_b, r.option_c, r.option_d],
-        correct_option_index: correctMap[r.correct] ?? 0,
+        correct_option_index: r.correct_option_index,
         marks: r.marks || 2,
       }));
 
@@ -817,7 +727,10 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
                           <td className="p-2 text-[11px] max-w-[220px] truncate text-slate-500">
                             A: {row.option_a} | B: {row.option_b} | C: {row.option_c} | D: {row.option_d}
                           </td>
-                          <td className="p-2 font-bold text-center text-emerald-600">{row.correct}</td>
+                          <td className="p-2 font-bold text-center">
+                            <span className="text-emerald-700 dark:text-emerald-400 font-bold">{row.correct_raw}</span>{' '}
+                            <span className="text-[10px] text-slate-400">({String.fromCharCode(65 + row.correct_option_index)})</span>
+                          </td>
                           <td className="p-2 text-center">{row.marks}</td>
                           <td className="p-2 text-right">
                             {row.isValid ? (

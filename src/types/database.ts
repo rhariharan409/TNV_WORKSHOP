@@ -568,3 +568,16 @@ export interface AdminSettings {
   min_attendance_percentage?: number;
   min_exam_percentage?: number;
 }
+
+export interface CourseAssignmentRequest {
+  id: string;
+  instructor_id: string;
+  course_id?: string | null;
+  message?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  instructor?: Profile;
+  course?: Course;
+}

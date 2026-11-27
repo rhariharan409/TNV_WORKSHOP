@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Select } from '../../components/ui/Select';
 import { ProgressBar } from '../../components/ui/ProgressBar';
+import { Modal } from '../../components/ui/Modal';
 import {
   Users,
   BookOpen,
@@ -23,6 +24,8 @@ import {
   AlertTriangle,
   UserCheck,
   CheckCircle2,
+  Plus,
+  Send,
 } from 'lucide-react';
 
 interface CourseCardStats {
@@ -45,6 +48,15 @@ export const InstructorDashboard: React.FC = () => {
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingActivity, setLoadingActivity] = useState(false);
+
+  // Course Assignment Request modal state
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [publishedCourses, setPublishedCourses] = useState<Course[]>([]);
+  const [selectedRequestCourseId, setSelectedRequestCourseId] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [requestSuccessMessage, setRequestSuccessMessage] = useState<string | null>(null);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   const loadData = async () => {
     if (!user) return;
@@ -111,10 +123,55 @@ export const InstructorDashboard: React.FC = () => {
         };
       });
       setCourseStats(statsMap);
+
+      if (assignedCourses.length === 0) {
+        try {
+          const myPending = await dataProvider.getCourseAssignmentRequests('pending', user.id);
+          setPendingRequestsCount(myPending.length);
+        } catch {}
+      }
     } catch (err) {
       console.error('Error loading instructor dashboard:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOpenRequestModal = async () => {
+    setIsRequestModalOpen(true);
+    try {
+      const allCourses = await dataProvider.getCourses();
+      const pub = allCourses.filter((c) => c.is_published);
+      setPublishedCourses(pub);
+      if (pub.length > 0 && !selectedRequestCourseId) {
+        setSelectedRequestCourseId(pub[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load published courses for request:', err);
+    }
+  };
+
+  const handleSubmitRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsSubmittingRequest(true);
+    try {
+      await dataProvider.createCourseAssignmentRequest({
+        instructor_id: user.id,
+        course_id: selectedRequestCourseId || null,
+        message: requestMessage.trim(),
+      });
+      setIsRequestModalOpen(false);
+      setRequestMessage('');
+      setRequestSuccessMessage(
+        'Your course assignment request has been submitted! Administrators have been notified.'
+      );
+      setTimeout(() => setRequestSuccessMessage(null), 5000);
+      setPendingRequestsCount((prev) => prev + 1);
+    } catch (err: any) {
+      alert(err.message || 'Failed to submit course assignment request.');
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -532,14 +589,42 @@ export const InstructorDashboard: React.FC = () => {
             ))}
           </div>
         ) : courses.length === 0 ? (
-          <Card className="p-12 text-center text-xs text-slate-500 space-y-3">
-            <BookOpen className="w-10 h-10 text-slate-300 mx-auto" />
-            <p className="font-semibold text-sm text-slate-700 dark:text-slate-300">
-              No courses assigned yet.
-            </p>
-            <p className="text-slate-400 max-w-sm mx-auto">
-              The academy administrator will assign your courses. Once assigned, they will appear here.
-            </p>
+          <Card className="p-12 text-center text-xs text-slate-500 space-y-4 rounded-2xl border-dashed border-2 border-slate-300 dark:border-slate-800">
+            <BookOpen className="w-12 h-12 text-[#1b6b3a]/40 mx-auto" />
+            <div className="space-y-1">
+              <p className="font-extrabold text-base text-slate-900 dark:text-white">
+                No Courses Assigned Yet
+              </p>
+              <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                You do not have any courses assigned to your faculty profile. You can request assignment to one of our published academy courses.
+              </p>
+            </div>
+
+            {requestSuccessMessage && (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold max-w-md mx-auto flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>{requestSuccessMessage}</span>
+              </div>
+            )}
+
+            {pendingRequestsCount > 0 && !requestSuccessMessage && (
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold">
+                <Clock className="w-4 h-4 text-amber-500" />
+                <span>You have {pendingRequestsCount} course assignment request{pendingRequestsCount > 1 ? 's' : ''} pending review</span>
+              </div>
+            )}
+
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={handleOpenRequestModal}
+                leftIcon={<Plus className="w-4 h-4" />}
+                className="font-bold shadow-md shadow-emerald-900/10"
+              >
+                Request Course Assignment
+              </Button>
+            </div>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -665,6 +750,66 @@ export const InstructorDashboard: React.FC = () => {
           </Card>
         </Link>
       </div>
+      {/* Course Assignment Request Modal */}
+      <Modal
+        isOpen={isRequestModalOpen}
+        onClose={() => setIsRequestModalOpen(false)}
+        title="Request Course Assignment"
+        description="Select a published course curriculum and submit an assignment request to academy administrators."
+      >
+        <form onSubmit={handleSubmitRequest} className="space-y-4 pt-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              Select Published Course <span className="text-rose-500">*</span>
+            </label>
+            {publishedCourses.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-2">Loading published courses...</p>
+            ) : (
+              <Select
+                value={selectedRequestCourseId}
+                onChange={(e) => setSelectedRequestCourseId(e.target.value)}
+                options={publishedCourses.map((c) => ({
+                  value: c.id,
+                  label: `${c.title} (${c.category || 'Course'} • ${c.duration || '6 Weeks'})`,
+                }))}
+              />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              Message to Academy Admin (Optional)
+            </label>
+            <textarea
+              rows={4}
+              placeholder="Explain your domain experience, teaching availability, or reasons for requesting this track..."
+              value={requestMessage}
+              onChange={(e) => setRequestMessage(e.target.value)}
+              className="w-full p-3 rounded-xl border border-slate-200 bg-white text-xs dark:bg-slate-900 dark:border-slate-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
+            />
+          </div>
+
+          <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRequestModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={isSubmittingRequest || !selectedRequestCourseId}
+              leftIcon={<Send className="w-4 h-4" />}
+            >
+              {isSubmittingRequest ? 'Submitting...' : 'Submit Request'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

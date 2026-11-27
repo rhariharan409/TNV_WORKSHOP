@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dataProvider } from '../../lib/dataProvider';
-import { Profile, Course, CourseInstructor } from '../../types/database';
+import { Profile, Course, CourseInstructor, CourseAssignmentRequest } from '../../types/database';
+import { formatDate } from '../../lib/utils';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -24,16 +26,32 @@ import {
   Shield,
   UserX,
   Award,
+  Clock,
+  Check,
 } from 'lucide-react';
 
 export const AdminInstructors: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<'instructors' | 'requests'>(
+    tabParam === 'requests' ? 'requests' : 'instructors'
+  );
+
   const [instructors, setInstructors] = useState<Profile[]>([]);
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [assignments, setAssignments] = useState<CourseInstructor[]>([]);
+  const [requests, setRequests] = useState<CourseAssignmentRequest[]>([]);
+  const [isReviewingId, setIsReviewingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (tabParam === 'requests') {
+      setActiveTab('requests');
+    }
+  }, [tabParam]);
 
   // Modals state
   const [isPromoteModalOpen, setIsPromoteModalOpen] = useState(false);
@@ -61,22 +79,41 @@ export const AdminInstructors: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [instrList, profList, courseList, assignList] = await Promise.all([
+      const [instrList, profList, courseList, assignList, reqList] = await Promise.all([
         dataProvider.getInstructors(),
         dataProvider.getProfiles(),
         dataProvider.getCourses(),
         dataProvider.getCourseInstructors(),
+        dataProvider.getCourseAssignmentRequests(),
       ]);
 
       setInstructors(instrList);
       setAllProfiles(profList);
       setCourses(courseList);
       setAssignments(assignList);
+      setRequests(reqList);
     } catch (err: any) {
       console.error('Error loading instructors data:', err);
       showToast('Failed to load instructor records.', 'error');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleReviewRequest = async (requestId: string, decision: 'approved' | 'rejected') => {
+    setIsReviewingId(requestId);
+    try {
+      await dataProvider.reviewCourseAssignmentRequest(requestId, decision, user?.id);
+      showToast(
+        decision === 'approved'
+          ? 'Course assignment request approved! Instructor has been assigned and notified.'
+          : 'Course assignment request rejected. Instructor has been notified.'
+      );
+      await loadData();
+    } catch (err: any) {
+      showToast(err.message || `Failed to ${decision} request.`, 'error');
+    } finally {
+      setIsReviewingId(null);
     }
   };
 
@@ -288,18 +325,58 @@ export const AdminInstructors: React.FC = () => {
         </Card>
       </div>
 
-      {/* Search Input */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative max-w-sm w-full">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search instructors by name, email, department..."
-            className="pl-10 text-xs"
-          />
-        </div>
+      {/* Tab Switcher: Faculty vs Course Requests */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <button
+          onClick={() => {
+            setActiveTab('instructors');
+            setSearchParams({});
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'instructors'
+              ? 'bg-[#1b6b3a] text-white shadow-sm ring-2 ring-[#1b6b3a]/20'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Active Faculty ({instructors.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('requests');
+            setSearchParams({ tab: 'requests' });
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'requests'
+              ? 'bg-[#1b6b3a] text-white shadow-sm ring-2 ring-[#1b6b3a]/20'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>Course Assignment Requests</span>
+          {requests.filter((r) => r.status === 'pending').length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+              {requests.filter((r) => r.status === 'pending').length}
+            </span>
+          )}
+        </button>
       </div>
+
+      {activeTab === 'instructors' && (
+        <div className="space-y-6">
+          {/* Search Input */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative max-w-sm w-full">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search instructors by name, email, department..."
+                className="pl-10 text-xs"
+              />
+            </div>
+          </div>
 
       {/* Instructors Table */}
       {isLoading ? (
@@ -407,6 +484,163 @@ export const AdminInstructors: React.FC = () => {
               </Card>
             );
           })}
+        </div>
+      )}
+        </div>
+      )}
+
+      {/* TAB 2: COURSE ASSIGNMENT REQUESTS */}
+      {activeTab === 'requests' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                Pending & Past Course Assignment Requests
+              </h2>
+              <p className="text-xs text-slate-500">
+                Instructors requesting teaching assignments for curriculum courses.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500">
+                Total requests: <span className="font-bold text-slate-800 dark:text-slate-200">{requests.length}</span>
+              </span>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="h-28 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+              ))}
+            </div>
+          ) : requests.length === 0 ? (
+            <Card className="p-12 text-center text-xs text-slate-500 space-y-3">
+              <Clock className="w-10 h-10 text-slate-300 mx-auto" />
+              <p className="font-semibold text-sm text-slate-700 dark:text-slate-300">
+                No course assignment requests yet.
+              </p>
+              <p className="text-slate-500 max-w-sm mx-auto">
+                When faculty members request assignments from their dashboard, they will appear here for administrative approval.
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {requests.map((req) => {
+                const reqCourse = req.course || courses.find((c) => c.id === req.course_id);
+                const reqInstructor =
+                  req.instructor ||
+                  instructors.find((i) => i.id === req.instructor_id) ||
+                  allProfiles.find((p) => p.id === req.instructor_id);
+
+                const isPending = req.status === 'pending';
+                const isApproved = req.status === 'approved';
+
+                return (
+                  <Card
+                    key={req.id}
+                    className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+                  >
+                    <div className="flex items-start gap-4 flex-1">
+                      <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold text-sm shrink-0 border border-emerald-200 dark:border-emerald-800">
+                        {reqInstructor?.full_name?.charAt(0).toUpperCase() || 'I'}
+                      </div>
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">
+                            {reqInstructor?.full_name || 'Instructor'}
+                          </span>
+                          <span className="text-xs text-slate-400">({reqInstructor?.email || 'No email'})</span>
+                          {(reqInstructor?.college_name || reqInstructor?.department) && (
+                            <span className="text-[11px] text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                              {[reqInstructor?.college_name, reqInstructor?.department].filter(Boolean).join(' • ')}
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              isPending
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border border-amber-300/50'
+                                : isApproved
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-300/50'
+                                : 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400 border border-rose-300/50'
+                            }`}
+                          >
+                            {req.status}
+                          </span>
+                        </div>
+
+                        {/* Requested Course Info */}
+                        <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                          <BookOpen className="w-3.5 h-3.5 text-[#1b6b3a] shrink-0" />
+                          <span className="font-semibold">Course requested:</span>
+                          {reqCourse ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 dark:text-white">{reqCourse.title}</span>
+                              {reqCourse.category && (
+                                <Badge variant="outline" className="text-[10px] py-0 px-1.5">
+                                  {reqCourse.category}
+                                </Badge>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="italic text-slate-400">Any Available Curriculum Course</span>
+                          )}
+                        </div>
+
+                        {/* Note/Message */}
+                        {req.message && (
+                          <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 italic">
+                            &ldquo;{req.message}&rdquo;
+                          </div>
+                        )}
+
+                        {/* Submitted at */}
+                        <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-0.5">
+                          <span>Requested {formatDate(req.created_at)}</span>
+                          {req.reviewed_at && (
+                            <>
+                              <span>&bull;</span>
+                              <span>Reviewed {formatDate(req.reviewed_at)}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                      {isPending ? (
+                        <>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={isReviewingId === req.id}
+                            onClick={() => handleReviewRequest(req.id, 'approved')}
+                            leftIcon={<Check className="w-3.5 h-3.5" />}
+                          >
+                            {isReviewingId === req.id ? 'Processing...' : 'Approve'}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            disabled={isReviewingId === req.id}
+                            onClick={() => handleReviewRequest(req.id, 'rejected')}
+                            leftIcon={<X className="w-3.5 h-3.5" />}
+                          >
+                            Reject
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-400 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                          {isApproved ? 'Approved & Assigned' : 'Rejected'}
+                        </span>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

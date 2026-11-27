@@ -33,6 +33,7 @@ import {
   AdminSettings,
   Profile,
   CourseInstructor,
+  CourseAssignmentRequest,
 } from '../types/database';
 import { generateUUID } from './utils';
 
@@ -5721,6 +5722,273 @@ export const dataProvider = {
       message,
       link || `/student/courses/${courseId}`
     );
+  },
+
+  async notifyAllAdmins(title: string, message: string, link?: string): Promise<void> {
+    let adminIds: string[] = [];
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .in('role', ['admin', 'super_admin']);
+        if (!error && data && data.length > 0) {
+          adminIds = data.map((p: any) => p.id).filter(Boolean);
+        }
+      } catch (e) {
+        console.warn('Error querying admin profiles for notifications:', e);
+      }
+    }
+
+    if (adminIds.length === 0) {
+      try {
+        const profiles = await this.getProfiles();
+        adminIds = profiles
+          .filter((p) => p.role === 'admin' || p.role === 'super_admin')
+          .map((p) => p.id);
+      } catch (e) {
+        console.warn('Error getting profiles for notifyAllAdmins:', e);
+      }
+    }
+
+    if (adminIds.length === 0) return;
+
+    const rows = adminIds.map((adminId) => ({
+      user_id: adminId,
+      title,
+      message,
+      type: 'info' as const,
+      link_url: link || null,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    }));
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase.from('notifications').insert(rows);
+        if (error) {
+          console.warn('Batch insert admin notifications warning:', error.message);
+        }
+      } catch (e) {
+        console.warn('Batch insert admin notifications error:', e);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        for (const adminId of adminIds) {
+          const key = `notifications_${adminId}`;
+          const adminNotifs = JSON.parse(localStorage.getItem(key) || '[]');
+          adminNotifs.unshift({
+            id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            user_id: adminId,
+            title,
+            message,
+            type: 'info',
+            link_url: link || null,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+          localStorage.setItem(key, JSON.stringify(adminNotifs));
+        }
+        window.dispatchEvent(new Event('notifications-updated'));
+      } catch (err) {
+        console.warn('Local storage admin notification write warning:', err);
+      }
+    }
+  },
+
+  async getProfile(userId: string): Promise<Profile | null> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+        if (!error && data) return data as Profile;
+      } catch (err) {
+        console.warn('Supabase getProfile blip:', err);
+      }
+    }
+    const profiles = await this.getProfiles();
+    return profiles.find((p) => p.id === userId) || null;
+  },
+
+  async createCourseAssignmentRequest(data: {
+    instructor_id: string;
+    course_id?: string | null;
+    message?: string;
+  }): Promise<CourseAssignmentRequest> {
+    const newReq: CourseAssignmentRequest = {
+      id: generateUUID(),
+      instructor_id: data.instructor_id,
+      course_id: data.course_id || null,
+      message: data.message || '',
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    };
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: inserted, error } = await supabase
+          .from('course_assignment_requests')
+          .insert({
+            id: newReq.id,
+            instructor_id: newReq.instructor_id,
+            course_id: newReq.course_id,
+            message: newReq.message,
+            status: 'pending',
+          })
+          .select('*, instructor:profiles!course_assignment_requests_instructor_id_fkey(*), course:courses(*)')
+          .single();
+
+        if (!error && inserted) {
+          newReq.instructor = inserted.instructor;
+          newReq.course = inserted.course;
+        } else if (error) {
+          console.warn('Insert into course_assignment_requests notice:', error.message);
+        }
+      } catch (err) {
+        console.warn('Failed to insert course assignment request into Supabase:', err);
+      }
+    }
+
+    // Save to local store
+    const local = getLocalStore<CourseAssignmentRequest[]>('course_assignment_requests', []);
+    setLocalStore('course_assignment_requests', [newReq, ...local]);
+
+    // Dispatch notification to all admins
+    try {
+      const [instructorProfile, courseObj] = await Promise.all([
+        this.getProfile(data.instructor_id).catch(() => null),
+        data.course_id ? this.getCourseById(data.course_id).catch(() => null) : null,
+      ]);
+      const instName = instructorProfile?.full_name || 'An instructor';
+      const courseTitle = courseObj?.title ? ` for "${courseObj.title}"` : '';
+      await this.notifyAllAdmins(
+        'New Course Assignment Request',
+        `${instName} has submitted a course assignment request${courseTitle}. Please review in the Instructor Management console.`,
+        '/admin/instructors?tab=requests'
+      );
+    } catch (notifErr) {
+      console.warn('Admin notification for assignment request blip:', notifErr);
+    }
+
+    return newReq;
+  },
+
+  async getCourseAssignmentRequests(status?: string, instructorId?: string): Promise<CourseAssignmentRequest[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        let q = supabase
+          .from('course_assignment_requests')
+          .select('*, instructor:profiles!course_assignment_requests_instructor_id_fkey(*), course:courses(*)');
+
+        if (status) q = q.eq('status', status);
+        if (instructorId) q = q.eq('instructor_id', instructorId);
+
+        const { data, error } = await q.order('created_at', { ascending: false });
+        if (!error && data) {
+          return data as CourseAssignmentRequest[];
+        }
+
+        // Fallback without FK alias if schema cache differs
+        let fallbackQ = supabase.from('course_assignment_requests').select('*');
+        if (status) fallbackQ = fallbackQ.eq('status', status);
+        if (instructorId) fallbackQ = fallbackQ.eq('instructor_id', instructorId);
+        const { data: fallbackData } = await fallbackQ.order('created_at', { ascending: false });
+        if (fallbackData && fallbackData.length > 0) {
+          const [profiles, courses] = await Promise.all([this.getProfiles(), this.getCourses()]);
+          const profileMap = new Map(profiles.map((p) => [p.id, p]));
+          const courseMap = new Map(courses.map((c) => [c.id, c]));
+          return fallbackData.map((r: any) => ({
+            ...r,
+            instructor: profileMap.get(r.instructor_id),
+            course: r.course_id ? courseMap.get(r.course_id) : undefined,
+          })) as CourseAssignmentRequest[];
+        }
+      } catch (err) {
+        console.warn('Failed to fetch course assignment requests from Supabase:', err);
+      }
+    }
+
+    // Local fallback
+    const local = getLocalStore<CourseAssignmentRequest[]>('course_assignment_requests', []);
+    let filtered = local;
+    if (status) filtered = filtered.filter((r) => r.status === status);
+    if (instructorId) filtered = filtered.filter((r) => r.instructor_id === instructorId);
+    return filtered;
+  },
+
+  async reviewCourseAssignmentRequest(
+    requestId: string,
+    status: 'approved' | 'rejected',
+    reviewerId?: string
+  ): Promise<void> {
+    const reviewedAt = new Date().toISOString();
+
+    let reqRecord: CourseAssignmentRequest | null = null;
+    const allRequests = await this.getCourseAssignmentRequests();
+    reqRecord = allRequests.find((r) => r.id === requestId) || null;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase
+          .from('course_assignment_requests')
+          .update({
+            status,
+            reviewed_by: reviewerId || null,
+            reviewed_at: reviewedAt,
+          })
+          .eq('id', requestId);
+        if (error) console.warn('Supabase reviewCourseAssignmentRequest notice:', error.message);
+      } catch (err) {
+        console.warn('Failed to update course assignment request in Supabase:', err);
+      }
+    }
+
+    // Update local store
+    const local = getLocalStore<CourseAssignmentRequest[]>('course_assignment_requests', []);
+    const idx = local.findIndex((r) => r.id === requestId);
+    if (idx !== -1) {
+      local[idx].status = status;
+      local[idx].reviewed_by = reviewerId || null;
+      local[idx].reviewed_at = reviewedAt;
+      setLocalStore('course_assignment_requests', local);
+      if (!reqRecord) reqRecord = local[idx];
+    }
+
+    // If approved and course_id exists, assign course to instructor
+    if (status === 'approved' && reqRecord && reqRecord.course_id) {
+      try {
+        await this.assignCourseToInstructor(reqRecord.course_id, reqRecord.instructor_id);
+      } catch (assignErr) {
+        console.warn('Failed to auto-assign course upon approval:', assignErr);
+      }
+    }
+
+    // Notify instructor of the decision
+    if (reqRecord) {
+      try {
+        const courseTitle = reqRecord.course?.title || 'the requested course';
+        const notifTitle = status === 'approved' ? 'Course Assignment Approved!' : 'Course Assignment Request Update';
+        const notifMessage =
+          status === 'approved'
+            ? `Your request to instruct "${courseTitle}" has been approved! The course is now active in your Instructor Console.`
+            : `Your course assignment request for "${courseTitle}" was not approved at this time.`;
+
+        await this.createNotification(
+          reqRecord.instructor_id,
+          notifTitle,
+          notifMessage,
+          status === 'approved' ? 'success' : 'alert',
+          status === 'approved' ? `/instructor/courses/${reqRecord.course_id || ''}` : '/instructor/dashboard'
+        );
+      } catch (notifErr) {
+        console.warn('Failed to notify instructor of request decision:', notifErr);
+      }
+    }
   },
 
   // ==========================================
