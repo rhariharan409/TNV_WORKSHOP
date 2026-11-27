@@ -41,7 +41,8 @@ export const InstructorLiveSessions: React.FC = () => {
   const [scheduledDate, setScheduledDate] = useState(todayStr);
   const [startTime, setStartTime] = useState('18:00');
   const [endTime, setEndTime] = useState('19:30');
-  const [meetingLink, setMeetingLink] = useState('https://meet.google.com/tnv-work-live');
+  const [meetingLink, setMeetingLink] = useState('');
+  const [meetingLinkError, setMeetingLinkError] = useState<string | null>(null);
   const [platform, setPlatform] = useState('Google Meet');
 
   const loadData = async () => {
@@ -95,6 +96,19 @@ export const InstructorLiveSessions: React.FC = () => {
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const trimmedLink = meetingLink.trim();
+    const GOOGLE_MEET_REGEX = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+    if (!trimmedLink) {
+      setMeetingLinkError('Meeting link is required');
+      return;
+    }
+    if (!GOOGLE_MEET_REGEX.test(trimmedLink)) {
+      setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/xxx-yyyy-zzz (e.g. https://meet.google.com/abc-defg-hij)');
+      return;
+    }
+    setMeetingLinkError(null);
+
     if (!title.trim() || !courseId || !scheduledDate || !startTime || !endTime) return;
 
     setIsSubmitting(true);
@@ -106,14 +120,15 @@ export const InstructorLiveSessions: React.FC = () => {
         scheduled_date: scheduledDate,
         start_time: startTime,
         end_time: endTime,
-        meeting_link: meetingLink.trim(),
+        meeting_link: trimmedLink,
         platform: platform.trim(),
         instructor_name: user?.full_name || 'Instructor',
       });
 
       setTitle('');
       setDescription('');
-      setMeetingLink('https://meet.google.com/tnv-work-live');
+      setMeetingLink('');
+      setMeetingLinkError(null);
       setModalOpen(false);
       setSuccessMessage('Live session broadcast scheduled successfully!');
       setTimeout(() => setSuccessMessage(null), 4000);
@@ -159,7 +174,11 @@ export const InstructorLiveSessions: React.FC = () => {
 
         <Button
           variant="primary"
-          onClick={() => setModalOpen(true)}
+          onClick={() => {
+            setMeetingLink('');
+            setMeetingLinkError(null);
+            setModalOpen(true);
+          }}
           leftIcon={<Plus className="w-4 h-4" />}
           disabled={courses.length === 0}
         >
@@ -303,7 +322,14 @@ export const InstructorLiveSessions: React.FC = () => {
       )}
 
       {/* SCHEDULE MODAL */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Schedule Live Session">
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setMeetingLinkError(null);
+        }}
+        title="Schedule Live Session"
+      >
         <form onSubmit={handleCreateSession} className="space-y-4">
           <div>
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
@@ -380,19 +406,29 @@ export const InstructorLiveSessions: React.FC = () => {
 
           <div>
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              Google Meet / Video Room URL
+              Google Meet / Video Room URL *
             </label>
             <Input
-              type="url"
+              type="text"
               value={meetingLink}
-              onChange={(e) => setMeetingLink(e.target.value)}
-              placeholder="https://meet.google.com/..."
-              required
+              onChange={(e) => {
+                setMeetingLink(e.target.value);
+                if (meetingLinkError) setMeetingLinkError(null);
+              }}
+              error={meetingLinkError || undefined}
+              placeholder="https://meet.google.com/abc-defg-hij"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setModalOpen(false);
+                setMeetingLinkError(null);
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit" variant="primary" isLoading={isSubmitting}>

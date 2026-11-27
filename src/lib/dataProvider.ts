@@ -63,8 +63,82 @@ const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   payment_qr_code_url: '',
 };
 
+// ==========================================
+// INSTRUCTOR CACHE & DEDUPLICATION (SPEED OPTIMIZATION)
+// ==========================================
+interface InstructorDataCache {
+  data: any;
+  timestamp: number;
+}
+
+let instructorDataCache: InstructorDataCache | null = null;
+let inFlightInstructorPromise: Promise<any> | null = null;
+
+export function clearInstructorCache(): void {
+  instructorDataCache = null;
+  inFlightInstructorPromise = null;
+}
+
+export function getCurrentUserRole(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const authSession = localStorage.getItem('tnv_auth_session');
+    if (!authSession) return null;
+    const parsed = JSON.parse(authSession);
+    return parsed.role || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getInstructorData(force = false, targetInstructorId?: string): Promise<any> {
+  if (typeof window === 'undefined') return null;
+
+  const now = Date.now();
+  if (!force && instructorDataCache && now - instructorDataCache.timestamp < 60_000) {
+    return instructorDataCache.data;
+  }
+
+  if (inFlightInstructorPromise) {
+    return inFlightInstructorPromise;
+  }
+
+  inFlightInstructorPromise = (async () => {
+    try {
+      let resolvedId = targetInstructorId;
+      if (!resolvedId) {
+        const authSession = localStorage.getItem('tnv_auth_session');
+        resolvedId = authSession ? JSON.parse(authSession).id : null;
+      }
+      const res = await fetch(`/api/instructor/data${resolvedId ? `?instructorId=${resolvedId}` : ''}`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch instructor data (${res.status})`);
+      }
+      const json = await res.json();
+      instructorDataCache = {
+        data: json,
+        timestamp: Date.now(),
+      };
+      return json;
+    } catch (err) {
+      console.warn('Notice fetching instructor data:', err);
+      return instructorDataCache?.data || null;
+    } finally {
+      inFlightInstructorPromise = null;
+    }
+  })();
+
+  return inFlightInstructorPromise;
+}
+
 // Unified Data Provider API
 export const dataProvider = {
+  clearInstructorCache(): void {
+    clearInstructorCache();
+  },
+  getInstructorData(force = false): Promise<any> {
+    return getInstructorData(force);
+  },
   // ==========================================
   // 1. WORKSHOPS (Supabase Connected)
   // ==========================================
@@ -222,22 +296,23 @@ export const dataProvider = {
   // 2. ENROLLMENTS & PROFILES (Supabase Connected)
   // ==========================================
   async getProfiles(): Promise<Profile[]> {
+    if (getCurrentUserRole() === 'instructor') {
+      const json = await getInstructorData();
+      if (json?.students && json.students.length > 0) {
+        return json.students as Profile[];
+      }
+    }
     if (isSupabaseConfigured()) {
       const { data, error } = await supabase.from('profiles').select('*');
       let profiles = (data || []) as Profile[];
       if (profiles.length <= 1 && typeof window !== 'undefined') {
         try {
-          const authSession = localStorage.getItem('tnv_auth_session');
-          const userId = authSession ? JSON.parse(authSession).id : null;
-          const res = await fetch(`/api/instructor/data${userId ? `?instructorId=${userId}` : ''}`);
-          if (res.ok) {
-            const json = await res.json();
-            if (json.students && json.students.length > 0) {
-              const existingIds = new Set(profiles.map((p) => p.id));
-              json.students.forEach((s: any) => {
-                if (!existingIds.has(s.id)) profiles.push(s);
-              });
-            }
+          const json = await getInstructorData();
+          if (json?.students && json.students.length > 0) {
+            const existingIds = new Set(profiles.map((p) => p.id));
+            json.students.forEach((s: any) => {
+              if (!existingIds.has(s.id)) profiles.push(s);
+            });
           }
         } catch {}
       }
@@ -1054,6 +1129,16 @@ export const dataProvider = {
   },
 
   async getCourseEnrollments(courseId?: string, studentId?: string, adminId?: string): Promise<CourseEnrollment[]> {
+    if (!studentId && getCurrentUserRole() === 'instructor') {
+      const json = await getInstructorData();
+      if (json?.enrollments) {
+        let results = json.enrollments as CourseEnrollment[];
+        if (courseId) {
+          results = results.filter((e: any) => e.course_id === courseId);
+        }
+        return results;
+      }
+    }
     if (isSupabaseConfigured()) {
       let q = supabase
         .from('course_enrollments')
@@ -1073,18 +1158,14 @@ export const dataProvider = {
       if (!studentId && typeof window !== 'undefined') {
         const authSession = localStorage.getItem('tnv_auth_session');
         const userRole = authSession ? JSON.parse(authSession).role : null;
-        const userId = authSession ? JSON.parse(authSession).id : null;
 
         if (userRole === 'instructor' || results.length <= 1) {
           try {
-            const res = await fetch(`/api/instructor/data${userId ? `?instructorId=${userId}` : ''}`);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.enrollments && json.enrollments.length > results.length) {
-                results = json.enrollments;
-                if (courseId) {
-                  results = results.filter((e: any) => e.course_id === courseId);
-                }
+            const json = await getInstructorData();
+            if (json && json.enrollments && json.enrollments.length > results.length) {
+              results = json.enrollments;
+              if (courseId) {
+                results = results.filter((e: any) => e.course_id === courseId);
               }
             }
           } catch {}
@@ -2055,19 +2136,11 @@ export const dataProvider = {
       }
 
       let enrollments = (rawEnrs || []);
-      if (typeof window !== 'undefined' && enrollments.length <= 1) {
+      if (typeof window !== 'undefined' && (getCurrentUserRole() === 'instructor' || enrollments.length <= 1)) {
         try {
-          const authSession = localStorage.getItem('tnv_auth_session');
-          const userRole = authSession ? JSON.parse(authSession).role : null;
-          const userId = authSession ? JSON.parse(authSession).id : null;
-          if (userRole === 'instructor' || userRole === 'admin') {
-            const res = await fetch(`/api/instructor/data${userId ? `?instructorId=${userId}` : ''}`);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.enrollments && json.enrollments.length > enrollments.length) {
-                enrollments = json.enrollments;
-              }
-            }
+          const json = await getInstructorData();
+          if (json && json.enrollments && json.enrollments.length > enrollments.length) {
+            enrollments = json.enrollments;
           }
         } catch {}
       }
@@ -2099,16 +2172,11 @@ export const dataProvider = {
       const modulesList = allModules || [];
       const sessionsList = allSessions || [];
       let submissionsList = allSubs || [];
-      if (typeof window !== 'undefined' && submissionsList.length === 0) {
+      if (typeof window !== 'undefined' && (getCurrentUserRole() === 'instructor' || submissionsList.length === 0)) {
         try {
-          const authSession = localStorage.getItem('tnv_auth_session');
-          const userId = authSession ? JSON.parse(authSession).id : null;
-          const res = await fetch(`/api/instructor/data${userId ? `?instructorId=${userId}` : ''}`);
-          if (res.ok) {
-            const json = await res.json();
-            if (json.submissions && json.submissions.length > 0) {
-              submissionsList = json.submissions;
-            }
+          const json = await getInstructorData();
+          if (json && json.submissions && json.submissions.length > 0) {
+            submissionsList = json.submissions;
           }
         } catch {}
       }
@@ -2598,6 +2666,16 @@ export const dataProvider = {
   // 6. ASSIGNMENTS (Supabase Connected) & SUBMISSIONS (Local Storage - Phase 2 Candidate)
   // ==========================================
   async getAssignments(courseId?: string, adminId?: string): Promise<Assignment[]> {
+    if (getCurrentUserRole() === 'instructor') {
+      const json = await getInstructorData();
+      if (json?.assignments) {
+        let list = json.assignments as Assignment[];
+        if (courseId) {
+          list = list.filter((a: any) => a.course_id === courseId);
+        }
+        return list;
+      }
+    }
     if (isSupabaseConfigured()) {
       let q = supabase.from('assignments').select('*, course:courses(*)');
       if (courseId) q = q.eq('course_id', courseId);
@@ -2625,6 +2703,7 @@ export const dataProvider = {
   },
 
   async createAssignment(assignment: Partial<Assignment>): Promise<Assignment> {
+    clearInstructorCache();
     if (isSupabaseConfigured()) {
       const { data, error } = await supabase
         .from('assignments')
@@ -2652,6 +2731,7 @@ export const dataProvider = {
   },
 
   async deleteAssignment(assignmentId: string): Promise<void> {
+    clearInstructorCache();
     if (isSupabaseConfigured()) {
       const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
       if (error) {
@@ -2662,6 +2742,16 @@ export const dataProvider = {
   },
 
   async getAssignmentSubmissions(assignmentId?: string, studentId?: string, adminId?: string): Promise<AssignmentSubmission[]> {
+    if (!studentId && getCurrentUserRole() === 'instructor') {
+      const json = await getInstructorData();
+      if (json?.submissions) {
+        let subs = json.submissions as AssignmentSubmission[];
+        if (assignmentId) {
+          subs = subs.filter((s: any) => s.assignment_id === assignmentId);
+        }
+        return subs;
+      }
+    }
     let subs: AssignmentSubmission[] = [];
     if (isSupabaseConfigured()) {
       try {
@@ -2684,16 +2774,11 @@ export const dataProvider = {
     // If RLS returned 0 rows for instructor, load from backend endpoint
     if (subs.length === 0 && !studentId && typeof window !== 'undefined') {
       try {
-        const authSession = localStorage.getItem('tnv_auth_session');
-        const userId = authSession ? JSON.parse(authSession).id : null;
-        const res = await fetch(`/api/instructor/data${userId ? `?instructorId=${userId}` : ''}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.submissions && json.submissions.length > 0) {
-            subs = json.submissions;
-            if (assignmentId) {
-              subs = subs.filter((s: any) => s.assignment_id === assignmentId);
-            }
+        const json = await getInstructorData();
+        if (json && json.submissions && json.submissions.length > 0) {
+          subs = json.submissions;
+          if (assignmentId) {
+            subs = subs.filter((s: any) => s.assignment_id === assignmentId);
           }
         }
       } catch {}
@@ -2736,6 +2821,7 @@ export const dataProvider = {
   },
 
   async evaluateSubmission(submissionId: string, marks: number, feedback: string): Promise<void> {
+    clearInstructorCache();
     if (typeof window !== 'undefined') {
       try {
         const authSession = localStorage.getItem('tnv_auth_session');
@@ -2745,7 +2831,10 @@ export const dataProvider = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ submissionId, marks, feedback, evaluatorId: user?.id }),
         });
-        if (res.ok) return;
+        if (res.ok) {
+          clearInstructorCache();
+          return;
+        }
       } catch {}
     }
 
@@ -2766,6 +2855,7 @@ export const dataProvider = {
         console.error('Error evaluating assignment submission:', error);
         throw new Error(`Failed to evaluate submission: ${error.message}`);
       }
+      clearInstructorCache();
       return;
     }
     throw new Error('Supabase is not configured');
@@ -3027,6 +3117,37 @@ export const dataProvider = {
   },
 
   async getExaminations(courseId?: string, adminId?: string, includeDrafts: boolean = true): Promise<Examination[]> {
+    if (getCurrentUserRole() === 'instructor') {
+      const json = await getInstructorData();
+      if (json?.examinations) {
+        let list = (json.examinations as any[]).map((e: any) => {
+          const { cleanInstructions, settings } = this._unpackExamInstructions(e.instructions);
+          const qList = e.questions || [];
+          const computedTotalMarks = qList.reduce((acc: number, curr: any) => acc + (curr.marks || 2), 0) || e.total_marks || 50;
+          const passingPct = e.passing_percentage ?? settings.passing_percentage ?? 50;
+          const passingMarks = Math.ceil((computedTotalMarks * passingPct) / 100);
+
+          return {
+            ...e,
+            instructions: cleanInstructions,
+            passing_percentage: passingPct,
+            max_attempts: e.max_attempts ?? settings.max_attempts ?? 2,
+            shuffle_questions: e.shuffle_questions ?? settings.shuffle_questions ?? true,
+            show_answer_review: e.show_answer_review ?? settings.show_answer_review ?? false,
+            questions: qList,
+            total_marks: computedTotalMarks,
+            passing_marks: passingMarks,
+          } as Examination;
+        });
+        if (courseId) {
+          list = list.filter((e: any) => e.course_id === courseId);
+        }
+        if (!includeDrafts) {
+          list = list.filter((e: any) => e.is_published);
+        }
+        return list;
+      }
+    }
     if (isSupabaseConfigured()) {
       let q = supabase
         .from('examinations')
@@ -3065,30 +3186,26 @@ export const dataProvider = {
       if (typeof window !== 'undefined') {
         const authSession = localStorage.getItem('tnv_auth_session');
         const userRole = authSession ? JSON.parse(authSession).role : null;
-        const userId = authSession ? JSON.parse(authSession).id : null;
         if (userRole === 'instructor' || list.some((e: any) => !e.questions || e.questions.length === 0)) {
           try {
-            const res = await fetch(`/api/instructor/data${userId ? `?instructorId=${userId}` : ''}`);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.examinations && json.examinations.length > 0) {
-                const apiExamMap = new Map(json.examinations.map((ex: any) => [ex.id, ex]));
-                list = list.map((e: any) => {
-                  const apiEx: any = apiExamMap.get(e.id);
-                  if (apiEx && (!e.questions || e.questions.length === 0)) {
-                    const qList = apiEx.questions || [];
-                    const computedTotalMarks = qList.reduce((acc: number, curr: any) => acc + (curr.marks || 2), 0) || e.total_marks || 50;
-                    const passingMarks = Math.ceil((computedTotalMarks * (e.passing_percentage || 50)) / 100);
-                    return {
-                      ...e,
-                      questions: qList,
-                      total_marks: computedTotalMarks,
-                      passing_marks: passingMarks,
-                    };
-                  }
-                  return e;
-                });
-              }
+            const json = await getInstructorData();
+            if (json && json.examinations && json.examinations.length > 0) {
+              const apiExamMap = new Map(json.examinations.map((ex: any) => [ex.id, ex]));
+              list = list.map((e: any) => {
+                const apiEx: any = apiExamMap.get(e.id);
+                if (apiEx && (!e.questions || e.questions.length === 0)) {
+                  const qList = apiEx.questions || [];
+                  const computedTotalMarks = qList.reduce((acc: number, curr: any) => acc + (curr.marks || 2), 0) || e.total_marks || 50;
+                  const passingMarks = Math.ceil((computedTotalMarks * (e.passing_percentage || 50)) / 100);
+                  return {
+                    ...e,
+                    questions: qList,
+                    total_marks: computedTotalMarks,
+                    passing_marks: passingMarks,
+                  };
+                }
+                return e;
+              });
             }
           } catch {}
         }
@@ -3760,6 +3877,7 @@ export const dataProvider = {
   },
 
   async createExamQuestion(question: Partial<ExamQuestion>): Promise<ExamQuestion> {
+    clearInstructorCache();
     if (isSupabaseConfigured()) {
       const { data, error } = await supabase
         .from('exam_questions')
@@ -3797,6 +3915,7 @@ export const dataProvider = {
   },
 
   async updateExamQuestion(questionId: string, question: Partial<ExamQuestion>): Promise<ExamQuestion> {
+    clearInstructorCache();
     if (isSupabaseConfigured()) {
       const updateData: any = {};
       if (question.question_text !== undefined) updateData.question_text = question.question_text;
@@ -3822,6 +3941,7 @@ export const dataProvider = {
   },
 
   async deleteExamQuestion(questionId: string): Promise<void> {
+    clearInstructorCache();
     if (isSupabaseConfigured()) {
       const { error } = await supabase.from('exam_questions').delete().eq('id', questionId);
       if (error) {
@@ -3833,6 +3953,12 @@ export const dataProvider = {
 
 
   async getExamAttempts(studentId?: string, adminId?: string): Promise<ExamAttempt[]> {
+    if (!studentId && getCurrentUserRole() === 'instructor') {
+      const json = await getInstructorData();
+      if (json?.examAttempts) {
+        return json.examAttempts as ExamAttempt[];
+      }
+    }
     if (isSupabaseConfigured()) {
       let q = supabase
         .from('exam_attempts')
@@ -3849,15 +3975,11 @@ export const dataProvider = {
       if (!studentId && typeof window !== 'undefined') {
         const authSession = localStorage.getItem('tnv_auth_session');
         const userRole = authSession ? JSON.parse(authSession).role : null;
-        const userId = authSession ? JSON.parse(authSession).id : null;
         if (userRole === 'instructor' || attempts.length <= 2) {
           try {
-            const res = await fetch(`/api/instructor/data${userId ? `?instructorId=${userId}` : ''}`);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.examAttempts && json.examAttempts.length > attempts.length) {
-                attempts = json.examAttempts;
-              }
+            const json = await getInstructorData();
+            if (json && json.examAttempts && json.examAttempts.length > attempts.length) {
+              attempts = json.examAttempts;
             }
           } catch {}
         }
@@ -3991,6 +4113,7 @@ export const dataProvider = {
     marks: number,
     feedback: string
   ): Promise<void> {
+    clearInstructorCache();
     if (isSupabaseConfigured()) {
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase
@@ -4059,6 +4182,16 @@ export const dataProvider = {
   },
 
   async getLiveSessions(courseId?: string): Promise<LiveSession[]> {
+    if (getCurrentUserRole() === 'instructor') {
+      const json = await getInstructorData();
+      if (json?.sessions) {
+        let list = json.sessions as LiveSession[];
+        if (courseId) {
+          list = list.filter((s: any) => s.course_id === courseId);
+        }
+        return this.normalizeLiveSessions(list);
+      }
+    }
     if (isSupabaseConfigured()) {
       try {
         let q = supabase
@@ -4299,6 +4432,7 @@ export const dataProvider = {
     status: Attendance['status'],
     remarks?: string
   ): Promise<void> {
+    clearInstructorCache();
     const markedAt = new Date().toISOString();
 
     // 1. Dual-persist to localStorage immediately so page refresh never resets to absent
@@ -5589,18 +5723,15 @@ export const dataProvider = {
     // Check backend endpoint fallback if assignments empty
     if (assignments.length === 0 && typeof window !== 'undefined') {
       try {
-        const res = await fetch(`/api/instructor/data${instructorId ? `?instructorId=${instructorId}` : ''}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.assignedCourses && json.assignedCourses.length > 0) {
-            assignments = json.assignedCourses.map((c: any) => ({
-              id: `${c.id}_${instructorId || 'inst'}`,
-              course_id: c.id,
-              instructor_id: instructorId || '',
-              course: c,
-              created_at: new Date().toISOString(),
-            }));
-          }
+        const json = await getInstructorData(false, instructorId);
+        if (json && json.assignedCourses && json.assignedCourses.length > 0) {
+          assignments = json.assignedCourses.map((c: any) => ({
+            id: `${c.id}_${instructorId || 'inst'}`,
+            course_id: c.id,
+            instructor_id: instructorId || '',
+            course: c,
+            created_at: new Date().toISOString(),
+          }));
         }
       } catch {}
     }
@@ -5622,6 +5753,7 @@ export const dataProvider = {
   },
 
   async assignCourseToInstructor(courseId: string, instructorId: string): Promise<void> {
+    clearInstructorCache();
     const newEntry: CourseInstructor = {
       id: `${courseId}_${instructorId}`,
       course_id: courseId,
@@ -5657,6 +5789,7 @@ export const dataProvider = {
   },
 
   async removeCourseFromInstructor(courseId: string, instructorId: string): Promise<void> {
+    clearInstructorCache();
     if (typeof window !== 'undefined') {
       try {
         await fetch('/api/instructor/remove-course', {
@@ -5692,12 +5825,9 @@ export const dataProvider = {
   async getInstructorCourses(instructorId: string): Promise<Course[]> {
     if (typeof window !== 'undefined') {
       try {
-        const res = await fetch(`/api/instructor/data?instructorId=${instructorId}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.assignedCourses && json.assignedCourses.length > 0) {
-            return json.assignedCourses;
-          }
+        const json = await getInstructorData(false, instructorId);
+        if (json?.assignedCourses && json.assignedCourses.length > 0) {
+          return json.assignedCourses;
         }
       } catch {}
     }
@@ -5712,9 +5842,8 @@ export const dataProvider = {
   async getInstructorDashboardMetrics(instructorId: string) {
     if (typeof window !== 'undefined') {
       try {
-        const res = await fetch(`/api/instructor/data?instructorId=${instructorId}`);
-        if (res.ok) {
-          const json = await res.json();
+        const json = await getInstructorData(false, instructorId);
+        if (json) {
           const assignedCourses = json.assignedCourses || [];
           const enrollments = json.enrollments || [];
           const submissions = json.submissions || [];

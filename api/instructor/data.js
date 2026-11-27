@@ -5,6 +5,9 @@ export default async function handler(req, res) {
     return sendJson(res, 200, { ok: true });
   }
 
+  // Optimize client & CDN caching for instructor responses
+  res.setHeader('Cache-Control', 'private, max-age=30');
+
   try {
     const adminClient = getAdminClient();
     const parsedUrl = new URL(req.url, 'http://localhost');
@@ -48,74 +51,69 @@ export default async function handler(req, res) {
       }
     }
 
-    // 2. Fetch enrollments for assigned courses
+    // 2. Fetch independent queries in parallel via Promise.all
     let enrollments = [];
-    if (assignedCourseIds.length > 0) {
-      const { data: enrs } = await adminClient
-        .from('course_enrollments')
-        .select('*, course:courses(*), student:profiles(*)')
-        .in('course_id', assignedCourseIds)
-        .order('enrolled_at', { ascending: false });
-      enrollments = enrs || [];
-    }
-
-    // 3. Fetch assignments
     let assignments = [];
-    let assignmentIds = [];
-    if (assignedCourseIds.length > 0) {
-      const { data: asns } = await adminClient
-        .from('assignments')
-        .select('*, course:courses(*)')
-        .in('course_id', assignedCourseIds);
-      assignments = asns || [];
-      assignmentIds = assignments.map((a) => a.id);
-    }
-
-    // 4. Fetch submissions
-    let submissions = [];
-    if (assignmentIds.length > 0) {
-      const { data: subs } = await adminClient
-        .from('assignment_submissions')
-        .select('*, student:profiles!assignment_submissions_student_id_fkey(*), assignment:assignments(*)')
-        .in('assignment_id', assignmentIds)
-        .order('submitted_at', { ascending: false });
-      submissions = subs || [];
-    }
-
-    // 5. Fetch examinations with questions
     let examinations = [];
-    let examIds = [];
-    if (assignedCourseIds.length > 0) {
-      const { data: exams } = await adminClient
-        .from('examinations')
-        .select('*, course:courses(*), questions:exam_questions(*)')
-        .in('course_id', assignedCourseIds);
-      examinations = exams || [];
-      examIds = examinations.map((e) => e.id);
-    }
-
-    // 6. Fetch exam attempts
-    let examAttempts = [];
-    if (examIds.length > 0) {
-      const { data: atts } = await adminClient
-        .from('exam_attempts')
-        .select('*, student:profiles!exam_attempts_student_id_fkey(*), examination:examinations(*)')
-        .in('exam_id', examIds)
-        .order('started_at', { ascending: false });
-      examAttempts = atts || [];
-    }
-
-    // 7. Fetch live sessions
     let sessions = [];
+
     if (assignedCourseIds.length > 0) {
-      const { data: sess } = await adminClient
-        .from('live_sessions')
-        .select('*, course:courses(*)')
-        .in('course_id', assignedCourseIds);
-      sessions = sess || [];
+      const [enrRes, asnRes, examRes, sessRes] = await Promise.all([
+        adminClient
+          .from('course_enrollments')
+          .select('*, course:courses(*), student:profiles(*)')
+          .in('course_id', assignedCourseIds)
+          .order('enrolled_at', { ascending: false }),
+        adminClient
+          .from('assignments')
+          .select('*, course:courses(*)')
+          .in('course_id', assignedCourseIds),
+        adminClient
+          .from('examinations')
+          .select('*, course:courses(*), questions:exam_questions(*)')
+          .in('course_id', assignedCourseIds),
+        adminClient
+          .from('live_sessions')
+          .select('*, course:courses(*)')
+          .in('course_id', assignedCourseIds),
+      ]);
+
+      enrollments = enrRes.data || [];
+      assignments = asnRes.data || [];
+      examinations = examRes.data || [];
+      sessions = sessRes.data || [];
     }
 
-    // 8. Unique enrolled students profiles
+    const assignmentIds = assignments.map((a) => a.id);
+    const examIds = examinations.map((e) => e.id);
+
+    // 3. Fetch dependent queries in parallel
+    let submissions = [];
+    let examAttempts = [];
+
+    if (assignmentIds.length > 0 || examIds.length > 0) {
+      const [subsRes, attsRes] = await Promise.all([
+        assignmentIds.length > 0
+          ? adminClient
+              .from('assignment_submissions')
+              .select('*, student:profiles!assignment_submissions_student_id_fkey(*), assignment:assignments(*)')
+              .in('assignment_id', assignmentIds)
+              .order('submitted_at', { ascending: false })
+          : Promise.resolve({ data: [] }),
+        examIds.length > 0
+          ? adminClient
+              .from('exam_attempts')
+              .select('*, student:profiles!exam_attempts_student_id_fkey(*), examination:examinations(*)')
+              .in('exam_id', examIds)
+              .order('started_at', { ascending: false })
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      submissions = subsRes.data || [];
+      examAttempts = attsRes.data || [];
+    }
+
+    // 4. Unique enrolled students profiles
     const studentMap = new Map();
     enrollments.forEach((e) => {
       if (e.student?.id) {

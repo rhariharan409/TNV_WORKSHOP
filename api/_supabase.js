@@ -1,10 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://hbocacibcgxkufvxhqpb.supabase.co';
-const FALLBACK_KEY = Buffer.from('c2Jfc2VjcmV0X0FTSmNHcVZpU1NTOS1VWllDV2JlVUFfZmlvUVE5N3Q=', 'base64').toString('utf-8');
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || FALLBACK_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export function getAdminClient() {
+  if (!SUPABASE_URL) {
+    throw new Error('Supabase configuration error: process.env.SUPABASE_URL or process.env.VITE_SUPABASE_URL is required.');
+  }
+  if (!SERVICE_KEY) {
+    throw new Error('Supabase configuration error: process.env.SUPABASE_SERVICE_ROLE_KEY is required.');
+  }
   return createClient(SUPABASE_URL, SERVICE_KEY);
 }
 

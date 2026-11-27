@@ -41,7 +41,8 @@ export const AdminLiveSessions: React.FC = () => {
   const [scheduledDate, setScheduledDate] = useState(todayStr);
   const [startTime, setStartTime] = useState('18:00');
   const [endTime, setEndTime] = useState('19:30');
-  const [meetingLink, setMeetingLink] = useState('https://meet.google.com/tnv-work-live');
+  const [meetingLink, setMeetingLink] = useState('');
+  const [meetingLinkError, setMeetingLinkError] = useState<string | null>(null);
   const [platform, setPlatform] = useState('Google Meet');
 
   const loadData = async () => {
@@ -107,7 +108,8 @@ export const AdminLiveSessions: React.FC = () => {
     setScheduledDate(todayStr);
     setStartTime('18:00');
     setEndTime('19:30');
-    setMeetingLink('https://meet.google.com/tnv-work-live');
+    setMeetingLink('');
+    setMeetingLinkError(null);
     setPlatform('Google Meet');
     setModalOpen(true);
   };
@@ -118,6 +120,18 @@ export const AdminLiveSessions: React.FC = () => {
       alert('Please select an associated published course.');
       return;
     }
+
+    const trimmedLink = meetingLink.trim();
+    const GOOGLE_MEET_REGEX = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+    if (!trimmedLink) {
+      setMeetingLinkError('Meeting link is required');
+      return;
+    }
+    if (!GOOGLE_MEET_REGEX.test(trimmedLink)) {
+      setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/xxx-yyyy-zzz (e.g. https://meet.google.com/abc-defg-hij)');
+      return;
+    }
+    setMeetingLinkError(null);
 
     const selectedCourse = courses.find((c) => c.id === courseId);
 
@@ -132,7 +146,7 @@ export const AdminLiveSessions: React.FC = () => {
         scheduled_date: scheduledDate,
         start_time: startTime,
         end_time: endTime,
-        meeting_link: meetingLink.trim(),
+        meeting_link: trimmedLink,
         platform: platform.trim() || 'Google Meet',
         instructor_name: user?.full_name || 'Thamilaran (Admin)',
         is_published: true,
@@ -140,6 +154,8 @@ export const AdminLiveSessions: React.FC = () => {
       });
 
       setModalOpen(false);
+      setMeetingLink('');
+      setMeetingLinkError(null);
       setSuccessMessage(
         `Live Masterclass "${title}" scheduled successfully! Real-time notification dispatched to all enrolled students for ${selectedCourse?.title}.`
       );
@@ -344,7 +360,10 @@ export const AdminLiveSessions: React.FC = () => {
       {/* Schedule Live Masterclass Modal */}
       <Modal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          setModalOpen(false);
+          setMeetingLinkError(null);
+        }}
         title="Schedule Live Masterclass"
         description="Set course, date, time and video conference link"
         maxWidth="md"
@@ -447,8 +466,11 @@ export const AdminLiveSessions: React.FC = () => {
             label="Meeting Link URL (Google Meet / G Meet / Drive Link) *"
             placeholder="https://meet.google.com/abc-defg-hij"
             value={meetingLink}
-            onChange={(e) => setMeetingLink(e.target.value)}
-            required
+            onChange={(e) => {
+              setMeetingLink(e.target.value);
+              if (meetingLinkError) setMeetingLinkError(null);
+            }}
+            error={meetingLinkError || undefined}
           />
 
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -456,7 +478,10 @@ export const AdminLiveSessions: React.FC = () => {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setModalOpen(false)}
+              onClick={() => {
+                setModalOpen(false);
+                setMeetingLinkError(null);
+              }}
             >
               Cancel
             </Button>
