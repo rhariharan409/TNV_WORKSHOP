@@ -17,36 +17,57 @@ export default async function handler(req, res) {
     let assignedCourseIds = [];
     let assignedCourses = [];
 
+    let isAdmin = false;
     if (instructorId) {
-      const { data: ciList } = await adminClient
-        .from('course_instructors')
-        .select('course_id, course:courses(*)')
-        .eq('instructor_id', instructorId);
-
-      if (ciList && ciList.length > 0) {
-        assignedCourseIds = ciList.map((ci) => ci.course_id);
-        assignedCourses = ciList.map((ci) => ci.course).filter(Boolean);
+      const { data: profile } = await adminClient
+        .from('profiles')
+        .select('role')
+        .eq('id', instructorId)
+        .maybeSingle();
+      if (profile && (profile.role === 'admin' || profile.role === 'super_admin')) {
+        isAdmin = true;
       }
     }
 
-    if (assignedCourseIds.length === 0) {
+    if (isAdmin) {
       const { data: allCourses } = await adminClient
         .from('courses')
         .select('*')
         .order('created_at', { ascending: true });
+      assignedCourses = allCourses || [];
+      assignedCourseIds = assignedCourses.map((c) => c.id);
+    } else {
+      if (instructorId) {
+        const { data: ciList } = await adminClient
+          .from('course_instructors')
+          .select('course_id, course:courses(*)')
+          .eq('instructor_id', instructorId);
 
-      if (allCourses && allCourses.length > 0) {
-        const pub = allCourses.filter((c) => c.is_published);
-        assignedCourses = pub.length > 0 ? pub : allCourses.slice(0, 1);
-        assignedCourseIds = assignedCourses.map((c) => c.id);
+        if (ciList && ciList.length > 0) {
+          assignedCourseIds = ciList.map((ci) => ci.course_id);
+          assignedCourses = ciList.map((ci) => ci.course).filter(Boolean);
+        }
+      }
 
-        if (instructorId && assignedCourses[0]?.id) {
-          await adminClient
-            .from('course_instructors')
-            .upsert(
-              { course_id: assignedCourses[0].id, instructor_id: instructorId },
-              { onConflict: 'course_id,instructor_id' }
-            );
+      if (assignedCourseIds.length === 0) {
+        const { data: allCourses } = await adminClient
+          .from('courses')
+          .select('*')
+          .order('created_at', { ascending: true });
+
+        if (allCourses && allCourses.length > 0) {
+          const pub = allCourses.filter((c) => c.is_published);
+          assignedCourses = pub.length > 0 ? pub : allCourses.slice(0, 1);
+          assignedCourseIds = assignedCourses.map((c) => c.id);
+
+          if (instructorId && assignedCourses[0]?.id) {
+            await adminClient
+              .from('course_instructors')
+              .upsert(
+                { course_id: assignedCourses[0].id, instructor_id: instructorId },
+                { onConflict: 'course_id,instructor_id' }
+              );
+          }
         }
       }
     }

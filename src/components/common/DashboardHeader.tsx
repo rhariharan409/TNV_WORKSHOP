@@ -108,13 +108,22 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
                 <span>Switch to Admin Console</span>
               </Link>
             ) : (
-              <Link
-                to="/student/dashboard"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
-              >
-                <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Student View</span>
-              </Link>
+              <div className="flex items-center gap-1.5">
+                <Link
+                  to="/student/dashboard"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Student View</span>
+                </Link>
+                <Link
+                  to="/instructor/dashboard"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+                >
+                  <GraduationCap className="w-3.5 h-3.5 text-[#1b6b3a]" />
+                  <span>Instructor View</span>
+                </Link>
+              </div>
             )}
           </div>
         )}

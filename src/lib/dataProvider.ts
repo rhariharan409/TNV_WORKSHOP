@@ -4779,15 +4779,33 @@ export const dataProvider = {
   },
 
   async revokeCertificate(certificateId: string, reason: string): Promise<void> {
+    const revokedAt = new Date().toISOString();
+    const finalReason = reason || 'Administrative revocation';
+
     if (isSupabaseConfigured()) {
       try {
-        const { error } = await supabase
+        const payload: any = {
+          status: 'revoked',
+          revoked_at: revokedAt,
+          revoke_reason: finalReason,
+          revoked_reason: finalReason,
+        };
+
+        let { error } = await supabase
           .from('certificates')
-          .update({
-            status: 'revoked',
-            revoked_reason: reason,
-          })
+          .update(payload)
           .eq('id', certificateId);
+
+        if (error && (error.message.includes('revoked_at') || error.message.includes('revoke_reason'))) {
+          const retryRes = await supabase
+            .from('certificates')
+            .update({
+              status: 'revoked',
+              revoked_reason: finalReason,
+            })
+            .eq('id', certificateId);
+          error = retryRes.error;
+        }
 
         if (error) {
           console.error('Error revoking certificate:', error);
@@ -4803,7 +4821,15 @@ export const dataProvider = {
     setLocalStore(
       'certificates',
       localCerts.map((c) =>
-        c.id === certificateId ? { ...c, status: 'revoked', revoked_reason: reason } : c
+        c.id === certificateId
+          ? {
+              ...c,
+              status: 'revoked',
+              revoked_at: revokedAt,
+              revoke_reason: finalReason,
+              revoked_reason: finalReason,
+            }
+          : c
       )
     );
   },
@@ -5823,6 +5849,18 @@ export const dataProvider = {
   },
 
   async getInstructorCourses(instructorId: string): Promise<Course[]> {
+    // Check if current user is admin/super_admin, if so return all courses
+    if (typeof window !== 'undefined') {
+      try {
+        const authSession = localStorage.getItem('tnv_auth_session');
+        const role = authSession ? JSON.parse(authSession)?.role : null;
+        if (role === 'admin' || role === 'super_admin') {
+          const allCourses = await this.getCourses();
+          return allCourses;
+        }
+      } catch {}
+    }
+
     if (typeof window !== 'undefined') {
       try {
         const json = await getInstructorData(false, instructorId);

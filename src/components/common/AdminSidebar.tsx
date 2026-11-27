@@ -63,14 +63,21 @@ export const AdminSidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* Switch to Student View Banner */}
-      <div className="p-3 bg-[#0a3a1d] border-b border-[#082e17]">
+      {/* Switch to Student & Instructor View Banner */}
+      <div className="p-3 bg-[#0a3a1d] border-b border-[#082e17] space-y-2">
         <Link
           to="/student/dashboard"
           className="w-full py-2 px-3 rounded-xl bg-[#0e4624] hover:bg-[#12532a] border border-emerald-700/60 text-emerald-100 hover:text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 active:scale-95"
         >
           <Eye className="w-4 h-4 text-[#f5c518]" />
           <span>Switch to Student View</span>
+        </Link>
+        <Link
+          to="/instructor/dashboard"
+          className="w-full py-2 px-3 rounded-xl bg-[#0e4624] hover:bg-[#12532a] border border-emerald-700/60 text-emerald-100 hover:text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 active:scale-95"
+        >
+          <GraduationCap className="w-4 h-4 text-[#f5c518]" />
+          <span>Switch to Instructor View</span>
         </Link>
       </div>
 

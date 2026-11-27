@@ -133,7 +133,7 @@ export const AdminCertificates: React.FC = () => {
   const handleRevoke = async () => {
     if (!revokeModalCert) return;
     try {
-      await dataProvider.revokeCertificate(revokeModalCert.id, revokeReason || 'Administrative revocation of Force-Issued Certificate');
+      await dataProvider.revokeCertificate(revokeModalCert.id, revokeReason.trim() || 'Administrative revocation');
       setRevokeModalCert(null);
       setRevokeReason('');
       await loadData();
@@ -339,12 +339,15 @@ export const AdminCertificates: React.FC = () => {
                           Download PDF
                         </Button>
 
-                        {/* Revoke button is visible ONLY for force-issued certificates */}
-                        {cert.status === 'issued' && cert.is_force_issued && (
+                        {/* Revoke button is visible for every issued certificate */}
+                        {cert.status === 'issued' && (
                           <Button
                             variant="danger"
                             size="sm"
-                            onClick={() => setRevokeModalCert(cert)}
+                            onClick={() => {
+                              setRevokeModalCert(cert);
+                              setRevokeReason('Administrative revocation');
+                            }}
                             leftIcon={<XCircle className="w-3.5 h-3.5" />}
                           >
                             Revoke
@@ -757,24 +760,24 @@ export const AdminCertificates: React.FC = () => {
         )}
       </Modal>
 
-      {/* Revocation Modal (Visible only for Force-Issued Certificates) */}
+      {/* Revocation Modal */}
       <Modal
         isOpen={Boolean(revokeModalCert)}
         onClose={() => setRevokeModalCert(null)}
-        title="Revoke Force-Issued Certificate"
-        description="Permanently revoke public validity of this force-issued credential"
+        title="Revoke Certificate"
+        description="Permanently revoke public validity of this issued credential"
         maxWidth="sm"
       >
         <div className="space-y-4 text-xs">
           <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
             <p>
-              Are you sure you want to revoke force-issued certificate <strong>{revokeModalCert?.certificate_number}</strong> belonging to <strong>{revokeModalCert?.student?.full_name}</strong>?
+              Are you sure you want to revoke certificate <strong>{revokeModalCert?.certificate_number}</strong> belonging to <strong>{revokeModalCert?.student?.full_name}</strong>?
             </p>
           </div>
 
           <Input
             label="Revocation Audit Reason *"
-            placeholder="e.g. Incomplete course curriculum / admin review retraction"
+            placeholder="Administrative revocation"
             value={revokeReason}
             onChange={(e) => setRevokeReason(e.target.value)}
             required

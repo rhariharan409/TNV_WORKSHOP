@@ -128,7 +128,7 @@ export const AdminLiveSessions: React.FC = () => {
       return;
     }
     if (!GOOGLE_MEET_REGEX.test(trimmedLink)) {
-      setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/xxx-yyyy-zzz (e.g. https://meet.google.com/abc-defg-hij)');
+      setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/abc-defg-hij');
       return;
     }
     setMeetingLinkError(null);
@@ -463,12 +463,23 @@ export const AdminLiveSessions: React.FC = () => {
           </div>
 
           <Input
-            label="Meeting Link URL (Google Meet / G Meet / Drive Link) *"
+            label="Meeting Link URL (Google Meet) *"
             placeholder="https://meet.google.com/abc-defg-hij"
             value={meetingLink}
             onChange={(e) => {
               setMeetingLink(e.target.value);
               if (meetingLinkError) setMeetingLinkError(null);
+            }}
+            onBlur={() => {
+              const trimmed = meetingLink.trim();
+              const GOOGLE_MEET_REGEX = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+              if (!trimmed) {
+                setMeetingLinkError('Meeting link is required');
+              } else if (!GOOGLE_MEET_REGEX.test(trimmed)) {
+                setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/abc-defg-hij');
+              } else {
+                setMeetingLinkError(null);
+              }
             }}
             error={meetingLinkError || undefined}
           />

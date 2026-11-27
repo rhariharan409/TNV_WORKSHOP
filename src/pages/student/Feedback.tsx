@@ -22,11 +22,90 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 
+const ISSUE_CATEGORIES = [
+  'Bug / Technical Issue',
+  'Course Content',
+  'Payment',
+  'Certificate',
+  'Account',
+  'Suggestion',
+  'Other',
+] as const;
+
+type IssueCategoryType = (typeof ISSUE_CATEGORIES)[number];
+
+const CATEGORY_SUBJECTS: Record<IssueCategoryType, string[]> = {
+  'Bug / Technical Issue': [
+    'Video / Playback Issue',
+    'Page Not Loading / Error',
+    'Login / Authentication Problem',
+    'Exam / Quiz Glitch',
+    'Assignment Upload Failed',
+    'Other',
+  ],
+  'Course Content': [
+    'Incorrect / Outdated Content',
+    'Missing Study Materials / Notes',
+    'Audio / Video Quality Issue',
+    'Curriculum Doubt / Question',
+    'Broken Links or References',
+    'Other',
+  ],
+  'Payment': [
+    'Payment not verified',
+    'Refund',
+    'Wrong amount',
+    'Invoice / Receipt Needed',
+    'Transaction Failed but Amount Deducted',
+    'Other',
+  ],
+  'Certificate': [
+    'Not received',
+    'Wrong details',
+    'Download issue',
+    'QR Verification Error',
+    'Name / Spelling Correction',
+    'Other',
+  ],
+  'Account': [
+    'Profile Details Update',
+    'Password Reset Issue',
+    'Email Address Change',
+    'Unenrollment Request',
+    'Duplicate Account Found',
+    'Other',
+  ],
+  'Suggestion': [
+    'New Course / Workshop Topic',
+    'Platform Feature Request',
+    'UI / UX Improvement',
+    'Schedule / Timing Suggestion',
+    'Other',
+  ],
+  'Other': [
+    'General Inquiry',
+    'Instructor Communication',
+    'Event / Masterclass Query',
+    'Other',
+  ],
+};
+
+const CATEGORY_TO_DB_MAP: Record<IssueCategoryType, Feedback['category']> = {
+  'Bug / Technical Issue': 'technical_issue',
+  'Course Content': 'improvement',
+  'Payment': 'complaint',
+  'Certificate': 'general',
+  'Account': 'general',
+  'Suggestion': 'improvement',
+  'Other': 'general',
+};
+
 export const FeedbackPage: React.FC = () => {
   const { user } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [category, setCategory] = useState<Feedback['category']>('improvement');
-  const [subject, setSubject] = useState('Course Content');
+  const [category, setCategory] = useState<IssueCategoryType>('Bug / Technical Issue');
+  const [subject, setSubject] = useState<string>('');
+  const [customSubject, setCustomSubject] = useState<string>('');
   const [description, setDescription] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState('');
@@ -84,7 +163,8 @@ export const FeedbackPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id || !subject.trim() || !description.trim()) return;
+    const finalSubject = subject === 'Other' ? customSubject.trim() : subject.trim();
+    if (!user?.id || !finalSubject || !description.trim()) return;
 
     setIsSubmitting(true);
     setFileError('');
@@ -98,16 +178,18 @@ export const FeedbackPage: React.FC = () => {
       }
 
       // 2. Submit ticket with attachment URLs
+      const dbCategory = CATEGORY_TO_DB_MAP[category] || 'general';
       await dataProvider.submitFeedback(
         user.id,
-        category,
-        subject,
+        dbCategory,
+        finalSubject,
         description,
         uploadedUrls
       );
 
       setSuccess(true);
-      setSubject('Course Content');
+      setSubject('');
+      setCustomSubject('');
       setDescription('');
       setSelectedFiles([]);
       await loadData();
@@ -150,32 +232,49 @@ export const FeedbackPage: React.FC = () => {
             <Select
               label="Issue Category *"
               value={category}
-              onChange={(e) => setCategory(e.target.value as Feedback['category'])}
-              options={[
-                { value: 'complaint', label: 'Complaint' },
-                { value: 'technical_issue', label: 'Technical Issue' },
-                { value: 'improvement', label: 'Curriculum Improvement' },
-                { value: 'general', label: 'General Inquiry' },
-              ]}
+              onChange={(e) => {
+                const newCat = e.target.value as IssueCategoryType;
+                setCategory(newCat);
+                setSubject('');
+                setCustomSubject('');
+              }}
+              options={ISSUE_CATEGORIES.map((cat) => ({
+                value: cat,
+                label: cat,
+              }))}
             />
 
             <Select
               label="Subject *"
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(e) => {
+                setSubject(e.target.value);
+                if (e.target.value !== 'Other') {
+                  setCustomSubject('');
+                }
+              }}
               options={[
-                { value: 'Course Content', label: 'Course Content' },
-                { value: 'Video/Playback Issue', label: 'Video/Playback Issue' },
-                { value: 'Assignment', label: 'Assignment' },
-                { value: 'Examination', label: 'Examination' },
-                { value: 'Certificate', label: 'Certificate' },
-                { value: 'Payment', label: 'Payment' },
-                { value: 'Technical Issue', label: 'Technical Issue' },
-                { value: 'Account/Profile', label: 'Account/Profile' },
-                { value: 'Other', label: 'Other' },
+                { value: '', label: '-- Select a Subject --' },
+                ...CATEGORY_SUBJECTS[category].map((sub) => ({
+                  value: sub,
+                  label: sub,
+                })),
               ]}
+              required
             />
           </div>
+
+          {subject === 'Other' && (
+            <div className="pt-0.5">
+              <Input
+                label="Custom Subject *"
+                placeholder="Enter specific subject..."
+                value={customSubject}
+                onChange={(e) => setCustomSubject(e.target.value)}
+                required
+              />
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">

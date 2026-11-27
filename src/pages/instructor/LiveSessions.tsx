@@ -104,7 +104,7 @@ export const InstructorLiveSessions: React.FC = () => {
       return;
     }
     if (!GOOGLE_MEET_REGEX.test(trimmedLink)) {
-      setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/xxx-yyyy-zzz (e.g. https://meet.google.com/abc-defg-hij)');
+      setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/abc-defg-hij');
       return;
     }
     setMeetingLinkError(null);
@@ -406,7 +406,7 @@ export const InstructorLiveSessions: React.FC = () => {
 
           <div>
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              Google Meet / Video Room URL *
+              Google Meet URL *
             </label>
             <Input
               type="text"
@@ -414,6 +414,17 @@ export const InstructorLiveSessions: React.FC = () => {
               onChange={(e) => {
                 setMeetingLink(e.target.value);
                 if (meetingLinkError) setMeetingLinkError(null);
+              }}
+              onBlur={() => {
+                const trimmed = meetingLink.trim();
+                const GOOGLE_MEET_REGEX = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+                if (!trimmed) {
+                  setMeetingLinkError('Meeting link is required');
+                } else if (!GOOGLE_MEET_REGEX.test(trimmed)) {
+                  setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/abc-defg-hij');
+                } else {
+                  setMeetingLinkError(null);
+                }
               }}
               error={meetingLinkError || undefined}
               placeholder="https://meet.google.com/abc-defg-hij"
