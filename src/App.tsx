@@ -179,6 +179,7 @@ export function App() {
               <Route path="live-sessions" element={<InstructorLiveSessions />} />
               <Route path="attendance" element={<InstructorAttendance />} />
               <Route path="students" element={<InstructorStudents />} />
+              <Route path="notifications" element={<NotificationsPage />} />
             </Route>
 
             {/* Fallback to home */}

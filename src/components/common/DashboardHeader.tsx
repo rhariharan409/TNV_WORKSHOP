@@ -130,7 +130,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
 
         {/* Notifications */}
         <Link
-          to={isInAdminPortal ? '/admin/notifications' : '/student/notifications'}
+          to={
+            isUserInstructor || isInInstructorPortal
+              ? '/instructor/notifications'
+              : isInAdminPortal
+              ? '/admin/notifications'
+              : '/student/notifications'
+          }
           className="relative p-2 rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
           title="Notifications"
         >

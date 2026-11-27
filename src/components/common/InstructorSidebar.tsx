@@ -11,6 +11,7 @@ import {
   Users,
   Video,
   LogOut,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -34,6 +35,7 @@ export const InstructorSidebar: React.FC = () => {
     { name: 'Live Sessions', href: '/instructor/live-sessions', icon: Video },
     { name: 'Attendance Records', href: '/instructor/attendance', icon: UserCheck },
     { name: 'Learning Materials', href: '/instructor/materials', icon: FolderGit2 },
+    { name: 'Notifications', href: '/instructor/notifications', icon: Bell },
   ];
 
   const rawName = user?.full_name || 'Instructor';
