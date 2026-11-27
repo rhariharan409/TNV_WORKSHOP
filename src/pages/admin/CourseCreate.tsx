@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dataProvider } from '../../lib/dataProvider';
-import { Course, Module, Session } from '../../types/database';
+import { Course, Module, Session, CertificateTemplate, Examination } from '../../types/database';
 import { parseGoogleDriveLink, isValidGoogleDriveUrl } from '../../lib/utils';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -38,6 +38,7 @@ import {
   Settings2,
   Edit2,
   Pencil,
+  GraduationCap,
 } from 'lucide-react';
 
 export const AdminCourseCreate: React.FC = () => {
@@ -46,7 +47,7 @@ export const AdminCourseCreate: React.FC = () => {
   const [searchParams] = useSearchParams();
   const editCourseId = searchParams.get('id');
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [courseId, setCourseId] = useState<string | null>(editCourseId);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
@@ -63,6 +64,37 @@ export const AdminCourseCreate: React.FC = () => {
   const [workshopId, setWorkshopId] = useState<string>('');
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState('0');
+
+  // Step 3: Examination Configuration
+  const [examTitle, setExamTitle] = useState('Final Certification Examination');
+  const [examDuration, setExamDuration] = useState('45');
+  const [examTotalMarks, setExamTotalMarks] = useState('50');
+  const [examPassingPercentage, setExamPassingPercentage] = useState('50');
+  const [examPassingMarks, setExamPassingMarks] = useState('25');
+  const [examQuestions, setExamQuestions] = useState<
+    Array<{
+      id: string;
+      question_text: string;
+      options: string[];
+      correct_option_index: number;
+      marks: number;
+    }>
+  >([]);
+
+  // Question Form State (ManageQuestionsModal logic)
+  const [editingQIndex, setEditingQIndex] = useState<number | null>(null);
+  const [qText, setQText] = useState('');
+  const [qOptA, setQOptA] = useState('');
+  const [qOptB, setQOptB] = useState('');
+  const [qOptC, setQOptC] = useState('');
+  const [qOptD, setQOptD] = useState('');
+  const [qCorrect, setQCorrect] = useState<number>(0);
+  const [qMarks, setQMarks] = useState('2');
+  const [qError, setQError] = useState<string | null>(null);
+
+  // Step 4: Certificate Template Selection
+  const [certificateTemplates, setCertificateTemplates] = useState<CertificateTemplate[]>([]);
+  const [selectedCertificateTemplateId, setSelectedCertificateTemplateId] = useState<string>('');
 
   // Step 2: Content Structure (Modules & Sessions)
   const [modules, setModules] = useState<
@@ -147,8 +179,22 @@ export const AdminCourseCreate: React.FC = () => {
   const [assignmentMaxMarks, setAssignmentMaxMarks] = useState(100);
   const [assignmentPassingMarks, setAssignmentPassingMarks] = useState(50);
 
-  // Load existing course if editing
+  // Load existing course if editing, plus certificate templates & exam
   useEffect(() => {
+    dataProvider.getCertificateTemplates().then((templates) => {
+      setCertificateTemplates(templates);
+      if (editCourseId && typeof window !== 'undefined') {
+        const saved = localStorage.getItem(`tnv_course_cert_template_${editCourseId}`);
+        if (saved) {
+          setSelectedCertificateTemplateId(saved);
+          return;
+        }
+      }
+      if (templates.length > 0) {
+        setSelectedCertificateTemplateId(templates[0].id);
+      }
+    });
+
     if (editCourseId) {
       setIsLoadingCourse(true);
       dataProvider.getCourseById(editCourseId).then((c) => {
@@ -194,12 +240,252 @@ export const AdminCourseCreate: React.FC = () => {
         }
         setIsLoadingCourse(false);
       });
+
+      // Load existing examination for this course if one exists
+      dataProvider.getExaminations(editCourseId).then((eList) => {
+        const ex = eList.find((e) => e.course_id === editCourseId);
+        if (ex) {
+          setExamTitle(ex.title);
+          setExamDuration(String(ex.duration_minutes || 45));
+          setExamTotalMarks(String(ex.total_marks || 50));
+          setExamPassingPercentage(String(ex.passing_percentage || 50));
+          setExamPassingMarks(String(ex.passing_marks || 25));
+          if (ex.questions && ex.questions.length > 0) {
+            setExamQuestions(
+              ex.questions.map((q) => ({
+                id: q.id,
+                question_text: q.question_text,
+                options: q.options || ['Option A', 'Option B', 'Option C', 'Option D'],
+                correct_option_index: q.correct_option_index ?? 0,
+                marks: q.marks || 2,
+              }))
+            );
+          }
+        }
+      });
     }
   }, [editCourseId, user]);
 
   const showSuccessBanner = (msg: string) => {
     setSaveSuccessMsg(msg);
     setTimeout(() => setSaveSuccessMsg(''), 4000);
+  };
+
+  // ----------------------------------------------------
+  // STEP 3 EXAMINATION BUILDER HANDLERS
+  // ----------------------------------------------------
+  const handleResetQForm = () => {
+    setEditingQIndex(null);
+    setQText('');
+    setQOptA('');
+    setQOptB('');
+    setQOptC('');
+    setQOptD('');
+    setQCorrect(0);
+    setQMarks('2');
+    setQError(null);
+  };
+
+  const handleEditQuestion = (index: number) => {
+    const q = examQuestions[index];
+    if (!q) return;
+    setEditingQIndex(index);
+    setQText(q.question_text);
+    setQOptA(q.options[0] || '');
+    setQOptB(q.options[1] || '');
+    setQOptC(q.options[2] || '');
+    setQOptD(q.options[3] || '');
+    setQCorrect(q.correct_option_index ?? 0);
+    setQMarks(String(q.marks || 2));
+    setQError(null);
+  };
+
+  const handleDeleteExamQuestion = (index: number) => {
+    const updated = examQuestions.filter((_, i) => i !== index);
+    setExamQuestions(updated);
+    if (editingQIndex === index) {
+      handleResetQForm();
+    }
+    const sumMarks = updated.reduce((sum, q) => sum + (q.marks || 2), 0);
+    if (sumMarks > 0) {
+      setExamTotalMarks(String(sumMarks));
+      const pct = parseInt(examPassingPercentage, 10) || 50;
+      setExamPassingMarks(String(Math.ceil((sumMarks * pct) / 100)));
+    }
+  };
+
+  const handleSaveQuestion = (e: React.FormEvent) => {
+    e.preventDefault();
+    setQError(null);
+
+    const txt = qText.trim();
+    const optA = qOptA.trim();
+    const optB = qOptB.trim();
+    const optC = qOptC.trim();
+    const optD = qOptD.trim();
+    const marksNum = parseInt(qMarks, 10) || 2;
+
+    if (!txt || !optA || !optB || !optC || !optD) {
+      setQError('Question prompt and all 4 options (A, B, C, D) are required.');
+      return;
+    }
+
+    const options = [optA, optB, optC, optD];
+    const setOfOpts = new Set(options.map((o) => o.toLowerCase()));
+    if (setOfOpts.size !== 4) {
+      setQError('Each of the 4 options must be distinct and non-empty.');
+      return;
+    }
+
+    if (qCorrect < 0 || qCorrect > 3) {
+      setQError('Please select the single correct option index (A, B, C, or D).');
+      return;
+    }
+
+    let updatedQuestions: typeof examQuestions;
+    if (editingQIndex !== null) {
+      updatedQuestions = examQuestions.map((q, idx) =>
+        idx === editingQIndex
+          ? {
+              ...q,
+              question_text: txt,
+              options,
+              correct_option_index: qCorrect,
+              marks: marksNum,
+            }
+          : q
+      );
+      showSuccessBanner('Exam question updated.');
+    } else {
+      const newQ = {
+        id: `temp_${Date.now()}`,
+        question_text: txt,
+        options,
+        correct_option_index: qCorrect,
+        marks: marksNum,
+      };
+      updatedQuestions = [...examQuestions, newQ];
+      showSuccessBanner('Exam question added to question bank.');
+    }
+
+    setExamQuestions(updatedQuestions);
+    const sumMarks = updatedQuestions.reduce((sum, q) => sum + (q.marks || 2), 0);
+    if (sumMarks > 0) {
+      setExamTotalMarks(String(sumMarks));
+      const pct = parseInt(examPassingPercentage, 10) || 50;
+      setExamPassingMarks(String(Math.ceil((sumMarks * pct) / 100)));
+    }
+    handleResetQForm();
+  };
+
+  const handleAddSampleExamQuestion = () => {
+    const num = examQuestions.length + 1;
+    const sample = {
+      id: `temp_${Date.now()}`,
+      question_text: `What is the primary technical objective of Module ${num} in ${title || 'this course'}?`,
+      options: [
+        'Production grade implementation and high availability architecture',
+        'Deprecated legacy protocol integration without fallback',
+        'Unverified mock test harness',
+        'Optional temporary cache file creation',
+      ],
+      correct_option_index: 0,
+      marks: 2,
+    };
+    const updated = [...examQuestions, sample];
+    setExamQuestions(updated);
+    const sumMarks = updated.reduce((sum, q) => sum + (q.marks || 2), 0);
+    if (sumMarks > 0) {
+      setExamTotalMarks(String(sumMarks));
+      const pct = parseInt(examPassingPercentage, 10) || 50;
+      setExamPassingMarks(String(Math.ceil((sumMarks * pct) / 100)));
+    }
+  };
+
+  const handleSaveExamForCourse = async (targetCourseId: string) => {
+    if (!examTitle.trim() && examQuestions.length === 0) return;
+
+    const totalMarksNum =
+      parseInt(examTotalMarks, 10) ||
+      examQuestions.reduce((sum, q) => sum + (q.marks || 2), 0) ||
+      50;
+    const passPct = parseInt(examPassingPercentage, 10) || 50;
+    const passMarksNum =
+      parseInt(examPassingMarks, 10) || Math.ceil((totalMarksNum * passPct) / 100);
+
+    // 1. Check if an examination already exists for this course
+    let existingExams = await dataProvider.getExaminations(targetCourseId);
+    let examRecord = existingExams.find((e) => e.course_id === targetCourseId);
+
+    const examPayload: Partial<Examination> = {
+      course_id: targetCourseId,
+      title: examTitle.trim() || `${title} Final Examination`,
+      duration_minutes: parseInt(examDuration, 10) || 45,
+      total_marks: totalMarksNum,
+      passing_marks: passMarksNum,
+      passing_percentage: passPct,
+      max_attempts: 2,
+      shuffle_questions: true,
+      show_answer_review: false,
+      is_published: false,
+    };
+
+    let savedExamId: string;
+    if (examRecord) {
+      const updated = await dataProvider.updateExamination(examRecord.id, examPayload);
+      savedExamId = updated.id;
+    } else {
+      const created = await dataProvider.createExamination(examPayload);
+      savedExamId = created.id;
+    }
+
+    // 2. Save questions
+    if (examQuestions.length > 0) {
+      const dbQuestions = await dataProvider.getExamQuestionsAdmin(savedExamId);
+      const dbQuestionMap = new Map(
+        dbQuestions.map((q) => [q.question_text.trim().toLowerCase(), q.id])
+      );
+
+      for (let idx = 0; idx < examQuestions.length; idx++) {
+        const q = examQuestions[idx];
+        const existingDbId =
+          q.id && !q.id.startsWith('temp_')
+            ? q.id
+            : dbQuestionMap.get(q.question_text.trim().toLowerCase());
+        if (existingDbId) {
+          await dataProvider.updateExamQuestion(existingDbId, {
+            question_text: q.question_text,
+            options: q.options,
+            correct_option_index: q.correct_option_index,
+            marks: q.marks,
+            order_index: idx + 1,
+          });
+        } else {
+          await dataProvider.createExamQuestion({
+            exam_id: savedExamId,
+            question_text: q.question_text,
+            options: q.options,
+            correct_option_index: q.correct_option_index,
+            marks: q.marks,
+            order_index: idx + 1,
+          });
+        }
+      }
+
+      // Publish examination now that questions exist
+      try {
+        await dataProvider.publishExamination(savedExamId, true);
+      } catch (e) {
+        console.warn('Auto-publish examination notice:', e);
+      }
+    }
+
+    // 3. Save certificate template mapping
+    if (selectedCertificateTemplateId && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`tnv_course_cert_template_${targetCourseId}`, selectedCertificateTemplateId);
+      } catch {}
+    }
   };
 
   // ----------------------------------------------------
@@ -264,6 +550,15 @@ export const AdminCourseCreate: React.FC = () => {
       return;
     }
 
+    const isPaidCourse = isPaid || (parseFloat(price) || 0) > 0;
+    if (isPaidCourse && examQuestions.length === 0) {
+      alert(
+        'A paid course must have an examination with at least 1 question before it can be published. Please configure the exam in Step 3.'
+      );
+      setStep(3);
+      return;
+    }
+
     setIsSaving(true);
     try {
       const payload: Partial<Course> = {
@@ -285,10 +580,12 @@ export const AdminCourseCreate: React.FC = () => {
       let currentId = courseId;
       if (currentId) {
         await dataProvider.updateCourse(currentId, payload);
+        await handleSaveExamForCourse(currentId);
         await dataProvider.publishCourse(currentId, user?.id);
       } else {
         const created = await dataProvider.createCourse(payload);
         currentId = created.id;
+        await handleSaveExamForCourse(currentId);
         await dataProvider.publishCourse(currentId, user?.id);
       }
       showSuccessBanner('Course published successfully! Placed into Published Courses.');
@@ -817,8 +1114,32 @@ export const AdminCourseCreate: React.FC = () => {
   const handlePublishCourse = async () => {
     if (!courseId || !user) return;
 
+    const isPaidCourse = isPaid || (parseFloat(price) || 0) > 0;
+    const hasValidExam = examQuestions.length >= 1 && examTitle.trim().length > 0;
+    if (isPaidCourse && !hasValidExam) {
+      alert(
+        'A paid course must have an examination with at least 1 question before it can be published. Please add questions in Step 3.'
+      );
+      setStep(3);
+      return;
+    }
+
     setIsSaving(true);
     try {
+      await dataProvider.updateCourse(courseId, {
+        title,
+        description,
+        category,
+        level,
+        duration,
+        instructor_name: instructorName,
+        thumbnail_url: thumbnailUrl.trim() || '/tnv-logo.png',
+        is_paid: isPaid,
+        price: isPaid ? (parseFloat(price) || 0) : 0,
+      });
+
+      await handleSaveExamForCourse(courseId);
+
       await dataProvider.publishCourse(courseId, user.id);
       showSuccessBanner('Course has been published and is now live in Published Courses!');
       setTimeout(() => {
@@ -857,7 +1178,7 @@ export const AdminCourseCreate: React.FC = () => {
         </div>
 
         {/* Step Indicator Pills */}
-        <div className="flex items-center gap-2 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
           <button
             onClick={() => setStep(1)}
             className={`px-3 py-1.5 rounded-xl transition-all ${
@@ -876,7 +1197,7 @@ export const AdminCourseCreate: React.FC = () => {
                 : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
             }`}
           >
-            2. Content & Drive Links
+            2. Content & Sessions
           </button>
           <button
             onClick={() => (courseId ? setStep(3) : alert('Save basic details first.'))}
@@ -886,7 +1207,27 @@ export const AdminCourseCreate: React.FC = () => {
                 : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
             }`}
           >
-            3. Review & Publish
+            3. Examination
+          </button>
+          <button
+            onClick={() => (courseId ? setStep(4) : alert('Save basic details first.'))}
+            className={`px-3 py-1.5 rounded-xl transition-all ${
+              step === 4
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+            }`}
+          >
+            4. Certificate
+          </button>
+          <button
+            onClick={() => (courseId ? setStep(5) : alert('Save basic details first.'))}
+            className={`px-3 py-1.5 rounded-xl transition-all ${
+              step === 5
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+            }`}
+          >
+            5. Review & Publish
           </button>
         </div>
       </div>
@@ -1110,7 +1451,7 @@ export const AdminCourseCreate: React.FC = () => {
                   onClick={() => setStep(3)}
                   rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
                 >
-                  Next: Review & Publish
+                  Next: Examination
                 </Button>
               </div>
             </div>
@@ -1907,23 +2248,543 @@ export const AdminCourseCreate: React.FC = () => {
                 </Card>
               ))
             )}
+
+            {/* Bottom Step 2 Navigation */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => setStep(1)}
+                leftIcon={<ArrowLeft className="w-4 h-4" />}
+              >
+                Back: Basic Details
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => setStep(3)}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+              >
+                Next: Examination
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
       {/* ======================================================== */}
-      {/* STEP 3: REVIEW AND PUBLISH */}
+      {/* STEP 3: EXAMINATION CONFIGURATION */}
       {/* ======================================================== */}
       {step === 3 && (
+        <div className="space-y-6">
+          <Card className="p-6 sm:p-8 space-y-6 border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <GraduationCap className="w-5 h-5 text-brand-600" />
+                  Step 3: Course Examination Configuration
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Configure the qualification examination and multiple-choice questions for course completion.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStep(2)}
+                  leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                >
+                  Back: Content
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    if (courseId) {
+                      await handleSaveExamForCourse(courseId);
+                    }
+                    setStep(4);
+                  }}
+                  rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
+                >
+                  Next: Certificate
+                </Button>
+              </div>
+            </div>
+
+            {/* Exam Details Inputs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Examination Title *"
+                placeholder="e.g. Masterclass Final Qualification Exam"
+                value={examTitle}
+                onChange={(e) => setExamTitle(e.target.value)}
+                required
+              />
+              <Input
+                label="Duration (Minutes) *"
+                type="number"
+                min="5"
+                value={examDuration}
+                onChange={(e) => setExamDuration(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                label="Total Marks *"
+                type="number"
+                min="1"
+                value={examTotalMarks}
+                onChange={(e) => {
+                  setExamTotalMarks(e.target.value);
+                  const tot = parseInt(e.target.value, 10) || 50;
+                  const pct = parseInt(examPassingPercentage, 10) || 50;
+                  setExamPassingMarks(String(Math.ceil((tot * pct) / 100)));
+                }}
+                required
+              />
+              <Input
+                label="Passing Percentage % *"
+                type="number"
+                min="1"
+                max="100"
+                value={examPassingPercentage}
+                onChange={(e) => {
+                  setExamPassingPercentage(e.target.value);
+                  const pct = parseInt(e.target.value, 10) || 50;
+                  const tot = parseInt(examTotalMarks, 10) || 50;
+                  setExamPassingMarks(String(Math.ceil((tot * pct) / 100)));
+                }}
+                required
+              />
+              <Input
+                label="Passing Marks"
+                type="number"
+                value={examPassingMarks}
+                onChange={(e) => setExamPassingMarks(e.target.value)}
+                required
+              />
+            </div>
+
+            {/* Inline Question List & Form (reusing ManageQuestionsModal logic) */}
+            <div className="space-y-4 pt-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <HelpCircle className="w-4 h-4 text-brand-600" />
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Question Bank ({examQuestions.length} Questions Added)
+                  </h3>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    Total: {examQuestions.reduce((sum, q) => sum + (q.marks || 2), 0)} Marks
+                  </span>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddSampleExamQuestion}
+                  leftIcon={<Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+                >
+                  Add Sample Question
+                </Button>
+              </div>
+
+              {/* Question Input Card */}
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center justify-between">
+                  <span>
+                    {editingQIndex !== null ? `Editing Question #${editingQIndex + 1}` : 'Add Multiple-Choice Question'}
+                  </span>
+                  {editingQIndex !== null && (
+                    <button
+                      type="button"
+                      onClick={handleResetQForm}
+                      className="text-xs text-slate-500 hover:text-slate-700 underline"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </h4>
+
+                {qError && (
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{qError}</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Question Prompt *
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Enter multiple-choice question prompt..."
+                    value={qText}
+                    onChange={(e) => setQText(e.target.value)}
+                    className="w-full rounded-2xl border-none bg-white dark:bg-slate-900 p-3 text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1b6b3a]"
+                  />
+                </div>
+
+                {/* 4 Options with Radio selection for correct option */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                    Options & Correct Answer (Click radio button of the correct option) *
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { label: 'Option A', val: qOptA, setVal: setQOptA, idx: 0 },
+                      { label: 'Option B', val: qOptB, setVal: setQOptB, idx: 1 },
+                      { label: 'Option C', val: qOptC, setVal: setQOptC, idx: 2 },
+                      { label: 'Option D', val: qOptD, setVal: setQOptD, idx: 3 },
+                    ].map((opt) => (
+                      <div
+                        key={opt.idx}
+                        className={`p-3 rounded-xl border flex items-center gap-3 transition-colors ${
+                          qCorrect === opt.idx
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 ring-1 ring-emerald-500'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="correctOptionRadio"
+                          checked={qCorrect === opt.idx}
+                          onChange={() => setQCorrect(opt.idx)}
+                          className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          title="Mark as correct answer"
+                        />
+                        <div className="w-full">
+                          <input
+                            type="text"
+                            placeholder={`${opt.label} text...`}
+                            value={opt.val}
+                            onChange={(e) => opt.setVal(e.target.value)}
+                            className="w-full text-xs font-semibold bg-transparent border-none p-0 focus:outline-none text-slate-800 dark:text-white"
+                          />
+                        </div>
+                        {qCorrect === opt.idx && (
+                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase shrink-0">
+                            Correct
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                  <div className="w-36">
+                    <Input
+                      label="Marks *"
+                      type="number"
+                      min="1"
+                      value={qMarks}
+                      onChange={(e) => setQMarks(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {editingQIndex !== null && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResetQForm}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={handleSaveQuestion}
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                    >
+                      {editingQIndex !== null ? 'Update Question' : 'Add Question'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Added Questions List */}
+              {examQuestions.length === 0 ? (
+                <div className="p-8 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2">
+                  <HelpCircle className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto" />
+                  <p className="text-xs font-semibold text-slate-500">
+                    No examination questions added yet. Use the builder above or click &quot;Add Sample Question&quot;.
+                  </p>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                    * Paid courses require an examination with at least 1 question to publish.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {examQuestions.map((q, idx) => (
+                    <div
+                      key={q.id || idx}
+                      className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-start justify-between gap-4 shadow-xs"
+                    >
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                            {q.question_text}
+                          </h5>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                            {q.marks} Marks
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-8">
+                          {q.options.map((opt, oIdx) => (
+                            <div
+                              key={oIdx}
+                              className={`text-xs p-2 rounded-lg flex items-center gap-2 ${
+                                q.correct_option_index === oIdx
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 font-bold border border-emerald-300 dark:border-emerald-700'
+                                  : 'bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 font-medium'
+                              }`}
+                            >
+                              <span className="w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold bg-white dark:bg-slate-800 shrink-0">
+                                {String.fromCharCode(65 + oIdx)}
+                              </span>
+                              <span className="truncate">{opt}</span>
+                              {q.correct_option_index === oIdx && (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ml-auto shrink-0" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 sm:self-center shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleEditQuestion(idx)}
+                          className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/40 rounded-lg transition-colors"
+                          title="Edit question"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteExamQuestion(idx)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                          title="Delete question"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Step 3 Navigation Footer */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => setStep(2)}
+                leftIcon={<ArrowLeft className="w-4 h-4" />}
+              >
+                Back: Content
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                onClick={async () => {
+                  if (courseId) {
+                    await handleSaveExamForCourse(courseId);
+                  }
+                  setStep(4);
+                }}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+              >
+                Next: Certificate
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STEP 4: CERTIFICATE TEMPLATE SELECTION */}
+      {/* ======================================================== */}
+      {step === 4 && (
+        <div className="space-y-6">
+          <Card className="p-6 sm:p-8 space-y-6 border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Award className="w-5 h-5 text-amber-500" />
+                  Step 4: Certificate Template Selection
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Select the certificate design and accreditation template issued upon successful completion and exam pass.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStep(3)}
+                  leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                >
+                  Back: Examination
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setStep(5)}
+                  rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
+                >
+                  Next: Review & Publish
+                </Button>
+              </div>
+            </div>
+
+            {/* Certificate Template Selection Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {certificateTemplates.length === 0 ? (
+                <div className="p-6 col-span-2 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-center space-y-2">
+                  <Award className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Using system standard Academy Certificate template.
+                  </p>
+                </div>
+              ) : (
+                certificateTemplates.map((template) => {
+                  const isSelected = selectedCertificateTemplateId === template.id;
+                  return (
+                    <div
+                      key={template.id}
+                      onClick={() => setSelectedCertificateTemplateId(template.id)}
+                      className={`p-5 rounded-2xl border cursor-pointer transition-all ${
+                        isSelected
+                          ? 'border-brand-600 bg-brand-50/30 dark:bg-brand-950/20 ring-2 ring-brand-500 shadow-sm'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Award className="w-4 h-4 text-brand-600" />
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                              {template.template_name}
+                            </h4>
+                          </div>
+                          <p className="text-xs font-semibold text-slate-500">
+                            {template.badge_title || 'Certificate of Technical Achievement'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 pt-2 text-[11px] text-slate-500">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-medium capitalize">
+                              Layout: {template.layout || 'classic'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-medium">
+                              Signatory: {template.signatory_name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-medium">
+                              Min Progress: {template.min_course_progress_percentage || 80}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 pt-0.5">
+                          <input
+                            type="radio"
+                            name="certTemplateRadio"
+                            checked={isSelected}
+                            onChange={() => setSelectedCertificateTemplateId(template.id)}
+                            className="w-4 h-4 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Step 4 Navigation Footer */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => setStep(3)}
+                leftIcon={<ArrowLeft className="w-4 h-4" />}
+              >
+                Back: Examination
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => setStep(5)}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+              >
+                Next: Review & Publish
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STEP 5: REVIEW AND PUBLISH */}
+      {/* ======================================================== */}
+      {step === 5 && (
         <Card className="p-6 sm:p-8 space-y-6 border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="space-y-1">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-              Step 3: Review and Publish Course
+              Step 5: Review and Publish Course
             </h2>
             <p className="text-xs text-slate-500">
-              Review your course details and curriculum structure before making it visible to students in Course Discovery.
+              Review your course details, curriculum structure, examination, and accreditation template before making it live to students.
             </p>
           </div>
+
+          {/* Paid Course Requirement Warning */}
+          {(() => {
+            const isPaidCourse = isPaid || (parseFloat(price) || 0) > 0;
+            const hasValidExam = examQuestions.length >= 1 && examTitle.trim().length > 0;
+            if (isPaidCourse && !hasValidExam) {
+              return (
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <div>
+                      <span className="font-bold block text-sm">
+                        Publishing Blocked: Paid Course Requires an Examination
+                      </span>
+                      <span className="text-[11px] text-rose-700 dark:text-rose-300">
+                        This course is configured as Paid (₹{price}). Paid courses must have an examination with at least 1 question before they can be published.
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 bg-white dark:bg-slate-900 border-rose-300"
+                    onClick={() => setStep(3)}
+                  >
+                    Configure Exam
+                  </Button>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Course Summary Card */}
           <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-5 items-start">
@@ -1936,6 +2797,11 @@ export const AdminCourseCreate: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Badge variant="brand">{category}</Badge>
                 <Badge variant="outline">{level.toUpperCase()}</Badge>
+                {isPaid || (parseFloat(price) || 0) > 0 ? (
+                  <Badge variant="brand">₹{price} (PAID)</Badge>
+                ) : (
+                  <Badge variant="outline">FREE COURSE</Badge>
+                )}
                 <Badge variant="warning">STATUS: DRAFT</Badge>
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h3>
@@ -1949,6 +2815,57 @@ export const AdminCourseCreate: React.FC = () => {
                   <strong>{modules.reduce((sum, m) => sum + m.sessions.length, 0)}</strong>
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Examination & Certificate Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                <GraduationCap className="w-4 h-4 text-brand-600" />
+                <span>Qualification Examination</span>
+              </div>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                {examTitle}
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs text-slate-500 pt-1">
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-semibold">
+                  {examQuestions.length} Question{examQuestions.length !== 1 ? 's' : ''}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-semibold">
+                  {examDuration} Mins
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-semibold">
+                  Pass: {examPassingMarks} / {examTotalMarks} ({examPassingPercentage}%)
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                <Award className="w-4 h-4 text-amber-500" />
+                <span>Certificate Accreditation</span>
+              </div>
+              {(() => {
+                const tmpl = certificateTemplates.find((t) => t.id === selectedCertificateTemplateId) || certificateTemplates[0];
+                return (
+                  <div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      {tmpl ? tmpl.template_name : 'Default Academy Certificate'}
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs text-slate-500 pt-1">
+                      <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-semibold capitalize">
+                        Layout: {tmpl?.layout || 'classic'}
+                      </span>
+                      {tmpl?.signatory_name && (
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-semibold">
+                          Signatory: {tmpl.signatory_name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -1992,10 +2909,10 @@ export const AdminCourseCreate: React.FC = () => {
               type="button"
               variant="outline"
               size="md"
-              onClick={() => setStep(2)}
+              onClick={() => setStep(4)}
               leftIcon={<ArrowLeft className="w-4 h-4" />}
             >
-              Back to Content
+              Back to Certificate
             </Button>
 
             <div className="flex items-center gap-3">
@@ -2004,7 +2921,10 @@ export const AdminCourseCreate: React.FC = () => {
                 variant="outline"
                 size="md"
                 disabled={isSaving}
-                onClick={() => {
+                onClick={async () => {
+                  if (courseId) {
+                    await handleSaveExamForCourse(courseId);
+                  }
                   showSuccessBanner('Draft saved in Supabase.');
                   navigate('/admin/courses');
                 }}
@@ -2013,16 +2933,32 @@ export const AdminCourseCreate: React.FC = () => {
                 Keep as Draft & Exit
               </Button>
 
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                disabled={isSaving}
-                onClick={handlePublishCourse}
-                leftIcon={<Globe className="w-4 h-4" />}
-              >
-                Publish Course for Students
-              </Button>
+              {(() => {
+                const isPaidCourse = isPaid || (parseFloat(price) || 0) > 0;
+                const hasValidExam = examQuestions.length >= 1 && examTitle.trim().length > 0;
+                const isPublishBlocked = isPaidCourse && !hasValidExam;
+
+                return (
+                  <span
+                    title={
+                      isPublishBlocked
+                        ? 'Cannot publish a paid course without an examination with at least 1 question'
+                        : undefined
+                    }
+                  >
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="md"
+                      disabled={isSaving || isPublishBlocked}
+                      onClick={handlePublishCourse}
+                      leftIcon={<Globe className="w-4 h-4" />}
+                    >
+                      Publish Course for Students
+                    </Button>
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </Card>
