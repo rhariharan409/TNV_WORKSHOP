@@ -783,11 +783,25 @@ export const dataProvider = {
         } catch {}
       }
 
-      return {
+      const createdCourse = {
         ...insertResult.data,
         is_paid: Boolean(course.is_paid),
         price: Number(course.price) || 0,
       } as Course;
+
+      if (course.is_published || insertResult.data?.is_published) {
+        try {
+          this.notifyAllStudents(
+            'New course available',
+            `"${createdCourse.title || 'New Course'}" is now available for enrollment! Check it out and start learning.`,
+            '/student/available-courses'
+          );
+        } catch (notifErr) {
+          console.warn('Course publication notification blip:', notifErr);
+        }
+      }
+
+      return createdCourse;
     }
     throw new Error('Supabase is not configured');
   },
@@ -844,7 +858,21 @@ export const dataProvider = {
         console.error(`Error updating course ${id}:`, updateResult.error);
         throw new Error(`Failed to update course: ${updateResult.error.message}`);
       }
-      return updateResult.data as Course;
+
+      const updatedCourse = updateResult.data as Course;
+      if (updates.is_published === true) {
+        try {
+          this.notifyAllStudents(
+            'New course available',
+            `"${updatedCourse.title || 'New Course'}" is now available for enrollment! Check it out and start learning.`,
+            '/student/available-courses'
+          );
+        } catch (notifErr) {
+          console.warn('Course publication update notification blip:', notifErr);
+        }
+      }
+
+      return updatedCourse;
     }
     throw new Error('Supabase is not configured');
   },
@@ -876,6 +904,19 @@ export const dataProvider = {
         console.error(`Error publishing course ${id}:`, error);
         throw new Error(`Failed to publish course: ${error.message}`);
       }
+
+      try {
+        const course = await this.getCourseById(id);
+        const courseTitle = course?.title || 'New Course';
+        await this.notifyAllStudents(
+          'New course available',
+          `"${courseTitle}" is now available for enrollment! Check it out and start learning.`,
+          '/student/available-courses'
+        );
+      } catch (notifErr) {
+        console.warn('Course publish notification blip:', notifErr);
+      }
+
       return;
     }
     throw new Error('Supabase is not configured');
@@ -1114,6 +1155,20 @@ export const dataProvider = {
         .single();
 
       if (error) throw error;
+
+      if (created && created.course_id) {
+        try {
+          await this.notifyCourseStudents(
+            created.course_id,
+            `New Learning Material: ${created.title}`,
+            `New learning material "${created.title}" has been uploaded to your course resources.`,
+            '/student/my-courses'
+          );
+        } catch (notifErr) {
+          console.warn('Learning material upload notification blip:', notifErr);
+        }
+      }
+
       return created;
     }
     throw new Error('Supabase is not configured');
@@ -2725,6 +2780,20 @@ export const dataProvider = {
         console.error('Error creating assignment in Supabase:', error);
         throw new Error(`Failed to create assignment: ${error.message}`);
       }
+
+      if (data && data.course_id) {
+        try {
+          await this.notifyCourseStudents(
+            data.course_id,
+            `New Assignment: ${data.title}`,
+            `A new assignment "${data.title}" has been published. Due date: ${new Date(data.due_date).toLocaleDateString()}.`,
+            '/student/assignments'
+          );
+        } catch (notifErr) {
+          console.warn('Assignment creation notification blip:', notifErr);
+        }
+      }
+
       return data as Assignment;
     }
     throw new Error('Supabase is not configured');
@@ -4295,7 +4364,16 @@ export const dataProvider = {
 
       // Dispatch notification to all students enrolled in this course
       if (createdSession.course_id) {
-        this.notifyEnrolledStudentsOfLiveSession(createdSession.course_id, createdSession);
+        try {
+          await this.notifyCourseStudents(
+            createdSession.course_id,
+            `Live Session Scheduled: ${createdSession.title}`,
+            `A live session "${createdSession.title}" has been scheduled for ${createdSession.scheduled_date} from ${createdSession.start_time} to ${createdSession.end_time}.`,
+            '/student/live-sessions'
+          );
+        } catch (notifErr) {
+          console.warn('Live session creation notification blip:', notifErr);
+        }
       }
 
       return createdSession;
@@ -4322,10 +4400,69 @@ export const dataProvider = {
     setLocalStore('live_sessions', [createdSession, ...local.filter((s) => s.id !== createdSession.id)]);
 
     if (createdSession.course_id) {
-      this.notifyEnrolledStudentsOfLiveSession(createdSession.course_id, createdSession);
+      try {
+        await this.notifyCourseStudents(
+          createdSession.course_id,
+          `Live Session Scheduled: ${createdSession.title}`,
+          `A live session "${createdSession.title}" has been scheduled for ${createdSession.scheduled_date} from ${createdSession.start_time} to ${createdSession.end_time}.`,
+          '/student/live-sessions'
+        );
+      } catch (notifErr) {
+        console.warn('Live session creation fallback notification blip:', notifErr);
+      }
     }
 
     return createdSession;
+  },
+
+  async updateLiveSession(id: string, updates: Partial<LiveSession>): Promise<LiveSession> {
+    let updatedSession: LiveSession;
+    if (isSupabaseConfigured()) {
+      const payload: any = { ...updates };
+      delete payload.course;
+      delete payload.instructor;
+      if (payload.start_time && payload.start_time.length === 5) {
+        payload.start_time = `${payload.start_time}:00`;
+      }
+      if (payload.end_time && payload.end_time.length === 5) {
+        payload.end_time = `${payload.end_time}:00`;
+      }
+
+      const { data, error } = await supabase
+        .from('live_sessions')
+        .update(payload)
+        .eq('id', id)
+        .select('*, course:courses(title, slug, instructor_name)')
+        .single();
+
+      if (error) {
+        console.error('Failed to update live session in Supabase:', error);
+        throw new Error(`Failed to update live session: ${error.message}`);
+      }
+      updatedSession = this.normalizeLiveSessions([data])[0];
+    } else {
+      const local = getLocalStore<LiveSession[]>('live_sessions', []);
+      const idx = local.findIndex((s) => s.id === id);
+      if (idx === -1) throw new Error('Live session not found');
+      updatedSession = { ...local[idx], ...updates };
+      local[idx] = updatedSession;
+      setLocalStore('live_sessions', local);
+    }
+
+    if (updatedSession.course_id) {
+      try {
+        await this.notifyCourseStudents(
+          updatedSession.course_id,
+          `Live Session Updated: ${updatedSession.title}`,
+          `The live session "${updatedSession.title}" has been updated. Scheduled for ${updatedSession.scheduled_date} from ${updatedSession.start_time} to ${updatedSession.end_time}.`,
+          '/student/live-sessions'
+        );
+      } catch (notifErr) {
+        console.warn('Live session update notification blip:', notifErr);
+      }
+    }
+
+    return updatedSession;
   },
 
   async deleteLiveSession(id: string): Promise<void> {
@@ -4343,42 +4480,10 @@ export const dataProvider = {
 
   async notifyEnrolledStudentsOfLiveSession(courseId: string, liveSession: LiveSession): Promise<void> {
     try {
-      const enrollments = await this.getCourseEnrollments(courseId);
       const courseTitle = liveSession.course?.title || 'Enrolled Course';
       const notifTitle = `Upcoming Live Masterclass: ${liveSession.title}`;
       const notifMessage = `A live masterclass for "${courseTitle}" has been scheduled for ${liveSession.scheduled_date} from ${liveSession.start_time} to ${liveSession.end_time} via ${liveSession.platform}. Join through the Live Sessions portal on time.`;
-
-      for (const enr of enrollments) {
-        const studentId = enr.student_id;
-        if (!studentId) continue;
-
-        try {
-          await this.createNotification(
-            studentId,
-            notifTitle,
-            notifMessage,
-            'info',
-            '/student/live-sessions'
-          );
-        } catch {
-          // Fallback to localStorage notification queue
-          try {
-            const key = `notifications_${studentId}`;
-            const studentNotifs = JSON.parse(localStorage.getItem(key) || '[]');
-            studentNotifs.unshift({
-              id: `notif-${Date.now()}-${Math.random()}`,
-              user_id: studentId,
-              title: notifTitle,
-              message: notifMessage,
-              type: 'info',
-              link_url: '/student/live-sessions',
-              is_read: false,
-              created_at: new Date().toISOString(),
-            });
-            localStorage.setItem(key, JSON.stringify(studentNotifs));
-          } catch { }
-        }
-      }
+      await this.notifyCourseStudents(courseId, notifTitle, notifMessage, '/student/live-sessions');
     } catch (err) {
       console.warn('Error broadcasting live session notifications:', err);
     }
@@ -5455,6 +5560,167 @@ export const dataProvider = {
         window.dispatchEvent(new Event('notifications-updated'));
       } catch { }
     }
+  },
+
+  async notifyCourseStudents(courseId: string, title: string, message: string, link?: string): Promise<void> {
+    if (!courseId) return;
+
+    let studentIds: string[] = [];
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('course_enrollments')
+          .select('student_id')
+          .eq('course_id', courseId);
+        if (!error && data && data.length > 0) {
+          studentIds = Array.from(new Set(data.map((r: any) => r.student_id).filter(Boolean)));
+        }
+      } catch (e) {
+        console.warn('Error querying course_enrollments for notifications:', e);
+      }
+    }
+
+    if (studentIds.length === 0) {
+      try {
+        const enrollments = await this.getCourseEnrollments(courseId);
+        studentIds = Array.from(new Set(enrollments.map((e: any) => e.student_id).filter(Boolean)));
+      } catch (e) {
+        console.warn('Error getting enrollments for course notifications:', e);
+      }
+    }
+
+    if (studentIds.length === 0) return;
+
+    const rows = studentIds.map((studentId) => ({
+      user_id: studentId,
+      title,
+      message,
+      type: 'info' as const,
+      link_url: link || null,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    }));
+
+    if (isSupabaseConfigured()) {
+      try {
+        for (let i = 0; i < rows.length; i += 500) {
+          const chunk = rows.slice(i, i + 500);
+          const { error } = await supabase.from('notifications').insert(chunk);
+          if (error) {
+            console.warn('Batch insert course notifications Supabase warning:', error.message);
+          }
+        }
+      } catch (e) {
+        console.warn('Batch insert course notifications error:', e);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        for (const studentId of studentIds) {
+          const key = `notifications_${studentId}`;
+          const studentNotifs = JSON.parse(localStorage.getItem(key) || '[]');
+          studentNotifs.unshift({
+            id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            user_id: studentId,
+            title,
+            message,
+            type: 'info',
+            link_url: link || null,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+          localStorage.setItem(key, JSON.stringify(studentNotifs));
+        }
+        window.dispatchEvent(new Event('notifications-updated'));
+      } catch (err) {
+        console.warn('Local storage notification write warning:', err);
+      }
+    }
+  },
+
+  async notifyAllStudents(title: string, message: string, link?: string): Promise<void> {
+    let studentIds: string[] = [];
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'student');
+        if (!error && data && data.length > 0) {
+          studentIds = data.map((p: any) => p.id).filter(Boolean);
+        }
+      } catch (e) {
+        console.warn('Error querying student profiles for notifications:', e);
+      }
+    }
+
+    if (studentIds.length === 0) {
+      try {
+        const profiles = await this.getProfiles();
+        studentIds = profiles.filter((p) => p.role === 'student').map((p) => p.id);
+      } catch (e) {
+        console.warn('Error getting profiles for notifyAllStudents:', e);
+      }
+    }
+
+    if (studentIds.length === 0) return;
+
+    const rows = studentIds.map((studentId) => ({
+      user_id: studentId,
+      title,
+      message,
+      type: 'info' as const,
+      link_url: link || null,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    }));
+
+    if (isSupabaseConfigured()) {
+      try {
+        for (let i = 0; i < rows.length; i += 500) {
+          const chunk = rows.slice(i, i + 500);
+          const { error } = await supabase.from('notifications').insert(chunk);
+          if (error) {
+            console.warn('Batch insert all-student notifications Supabase warning:', error.message);
+          }
+        }
+      } catch (e) {
+        console.warn('Batch insert all-student notifications error:', e);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        for (const studentId of studentIds) {
+          const key = `notifications_${studentId}`;
+          const studentNotifs = JSON.parse(localStorage.getItem(key) || '[]');
+          studentNotifs.unshift({
+            id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            user_id: studentId,
+            title,
+            message,
+            type: 'info',
+            link_url: link || null,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+          localStorage.setItem(key, JSON.stringify(studentNotifs));
+        }
+        window.dispatchEvent(new Event('notifications-updated'));
+      } catch (err) {
+        console.warn('Local storage notification write warning:', err);
+      }
+    }
+  },
+
+  async createCourseAnnouncement(courseId: string, title: string, message: string, link?: string): Promise<void> {
+    await this.notifyCourseStudents(
+      courseId,
+      title.startsWith('Announcement:') ? title : `Announcement: ${title}`,
+      message,
+      link || `/student/courses/${courseId}`
+    );
   },
 
   // ==========================================
