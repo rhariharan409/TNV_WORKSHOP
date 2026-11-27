@@ -25,9 +25,15 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
+interface CourseCardStats {
+  studentCount: number;
+  pendingSubmissions: number;
+}
+
 export const InstructorDashboard: React.FC = () => {
   const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [courseStats, setCourseStats] = useState<Record<string, CourseCardStats>>({});
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [metrics, setMetrics] = useState<any>(null);
   const [courseActivityData, setCourseActivityData] = useState<{
@@ -53,6 +59,58 @@ export const InstructorDashboard: React.FC = () => {
       if (assignedCourses.length > 0) {
         setSelectedCourseId(assignedCourses[0].id);
       }
+
+      // Fetch enrollments, assignments, and submissions to compute per-course stats
+      let allEnrollments: CourseEnrollment[] = [];
+      let allSubmissions: AssignmentSubmission[] = [];
+      let allAssignments: Assignment[] = [];
+
+      try {
+        const instData = await dataProvider.getInstructorData();
+        if (instData) {
+          allEnrollments = instData.enrollments || [];
+          allSubmissions = instData.submissions || [];
+          allAssignments = instData.assignments || [];
+        }
+      } catch {}
+
+      if (allEnrollments.length === 0 && allSubmissions.length === 0) {
+        try {
+          const [enrs, subs, asns] = await Promise.all([
+            dataProvider.getCourseEnrollments(),
+            dataProvider.getAssignmentSubmissions(),
+            dataProvider.getAssignments(),
+          ]);
+          allEnrollments = enrs;
+          allSubmissions = subs;
+          allAssignments = asns;
+        } catch {}
+      }
+
+      const statsMap: Record<string, CourseCardStats> = {};
+      assignedCourses.forEach((c) => {
+        const courseEnrs = allEnrollments.filter((e) => e.course_id === c.id);
+        const uniqueStudents = new Set(courseEnrs.map((e) => e.student_id).filter(Boolean));
+        const studentCount = uniqueStudents.size || courseEnrs.length;
+
+        const courseAsnIds = new Set(
+          allAssignments.filter((a) => a.course_id === c.id).map((a) => a.id)
+        );
+        const coursePendingSubs = allSubmissions.filter((s) => {
+          const isThisCourse = s.assignment?.course_id === c.id || courseAsnIds.has(s.assignment_id);
+          const isPending =
+            s.status !== 'evaluated' ||
+            s.marks_obtained === null ||
+            s.marks_obtained === undefined;
+          return isThisCourse && isPending;
+        });
+
+        statsMap[c.id] = {
+          studentCount,
+          pendingSubmissions: coursePendingSubs.length,
+        };
+      });
+      setCourseStats(statsMap);
     } catch (err) {
       console.error('Error loading instructor dashboard:', err);
     } finally {
@@ -484,54 +542,81 @@ export const InstructorDashboard: React.FC = () => {
             </p>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {courses.map((course) => (
-              <Card key={course.id} className="p-5 flex flex-col justify-between hover:shadow-md transition-shadow">
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      {course.category || 'Technical Workshop'}
-                    </span>
-                    <span className="text-[11px] font-bold text-slate-400">
-                      {course.modules_count || 0} Modules • {course.sessions_count || 0} Sessions
-                    </span>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {courses.map((course) => {
+              const stats = courseStats[course.id] || { studentCount: 0, pendingSubmissions: 0 };
+              return (
+                <Link
+                  key={course.id}
+                  to={`/instructor/courses/${course.id}`}
+                  className="block group"
+                >
+                  <Card className="p-6 h-full flex flex-col justify-between border border-slate-200 dark:border-slate-800 hover:border-[#1b6b3a] dark:hover:border-emerald-500 transition-all hover:shadow-lg cursor-pointer rounded-2xl bg-white dark:bg-slate-900 group">
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          {course.category || 'Course'}
+                        </span>
+                        <span
+                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                            course.is_published
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                          }`}
+                        >
+                          {course.is_published ? 'Published' : 'Draft'}
+                        </span>
+                      </div>
 
-                  <h3 className="font-black text-base text-slate-900 dark:text-white leading-snug">
-                    {course.title}
-                  </h3>
+                      <h3 className="font-extrabold text-lg text-slate-900 dark:text-white group-hover:text-[#1b6b3a] dark:group-hover:text-emerald-400 transition-colors line-clamp-2">
+                        {course.title}
+                      </h3>
 
-                  <p className="text-xs text-slate-500 line-clamp-2">
-                    {course.description || 'No course description available.'}
-                  </p>
-                </div>
+                      {course.description && (
+                        <p className="text-xs text-slate-500 line-clamp-2">
+                          {course.description}
+                        </p>
+                      )}
+                    </div>
 
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-4 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{course.duration || '40 Hours'}</span>
-                  </div>
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-4 space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
+                            <Users className="w-4 h-4 text-[#1b6b3a]" />
+                            <span className="font-medium">Students</span>
+                          </div>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">
+                            {stats.studentCount}
+                          </span>
+                        </div>
 
-                  <div className="flex items-center gap-2">
-                    <Link to={`/instructor/examinations?courseId=${course.id}`}>
-                      <Button variant="outline" size="sm" className="text-xs py-1 px-2.5">
-                        Exams
-                      </Button>
-                    </Link>
-                    <Link to={`/instructor/materials?courseId=${course.id}`}>
-                      <Button variant="outline" size="sm" className="text-xs py-1 px-2.5">
-                        Materials
-                      </Button>
-                    </Link>
-                    <Link to={`/instructor/courses`}>
-                      <Button variant="primary" size="sm" className="text-xs py-1 px-3">
-                        Curriculum
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
+                            <Clock className="w-4 h-4 text-amber-500" />
+                            <span className="font-medium">Pending Submissions</span>
+                          </div>
+                          <span
+                            className={`text-2xl font-black ${
+                              stats.pendingSubmissions > 0
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : 'text-slate-900 dark:text-white'
+                            }`}
+                          >
+                            {stats.pendingSubmissions}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs font-bold text-[#1b6b3a] dark:text-emerald-400 group-hover:translate-x-1 transition-transform">
+                        <span>Manage Course & Tabs</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

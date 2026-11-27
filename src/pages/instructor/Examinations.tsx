@@ -24,7 +24,11 @@ import {
   BookOpen,
 } from 'lucide-react';
 
-export const InstructorExaminations: React.FC = () => {
+interface InstructorExaminationsProps {
+  courseId?: string;
+}
+
+export const InstructorExaminations: React.FC<InstructorExaminationsProps> = ({ courseId: propCourseId }) => {
   const { user } = useAuth();
   const [exams, setExams] = useState<Examination[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -48,8 +52,10 @@ export const InstructorExaminations: React.FC = () => {
     setIsLoading(true);
     try {
       const assignedCourses = await dataProvider.getInstructorCourses(user.id);
-      const assignedCourseIds = new Set(assignedCourses.map((c) => c.id));
-      setCourses(assignedCourses);
+      const filteredCourses = propCourseId ? assignedCourses.filter((c) => c.id === propCourseId) : assignedCourses;
+      setCourses(filteredCourses);
+
+      const targetCourseIds = new Set(filteredCourses.map((c) => c.id));
 
       const [allExams, allAttempts] = await Promise.all([
         dataProvider.getExaminations(undefined, undefined, true),
@@ -58,7 +64,7 @@ export const InstructorExaminations: React.FC = () => {
 
       // Strictly filter to instructor's assigned courses only
       const scopedExams = allExams.filter(
-        (e) => e.course_id && assignedCourseIds.has(e.course_id)
+        (e) => e.course_id && targetCourseIds.has(e.course_id)
       );
       const scopedExamIds = new Set(scopedExams.map((e) => e.id));
       const scopedAttempts = allAttempts.filter((a) => scopedExamIds.has(a.exam_id));
@@ -74,7 +80,7 @@ export const InstructorExaminations: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [user?.id]);
+  }, [user?.id, propCourseId]);
 
   // Publish / Unpublish Toggle
   const handleTogglePublish = async (exam: Examination) => {

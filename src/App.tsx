@@ -60,6 +60,7 @@ import { AdminNotifications } from './pages/admin/Notifications';
 // Instructor Pages
 import { InstructorDashboard } from './pages/instructor/Dashboard';
 import { InstructorCourses } from './pages/instructor/Courses';
+import { InstructorCourseDetail } from './pages/instructor/CourseDetail';
 import { InstructorMaterials } from './pages/instructor/Materials';
 import { InstructorAssignments } from './pages/instructor/Assignments';
 import { InstructorSubmissions } from './pages/instructor/Submissions';
@@ -172,6 +173,7 @@ export function App() {
               <Route index element={<Navigate to="/instructor/dashboard" replace />} />
               <Route path="dashboard" element={<InstructorDashboard />} />
               <Route path="courses" element={<InstructorCourses />} />
+              <Route path="courses/:courseId" element={<InstructorCourseDetail />} />
               <Route path="materials" element={<InstructorMaterials />} />
               <Route path="assignments" element={<InstructorAssignments />} />
               <Route path="submissions" element={<InstructorSubmissions />} />

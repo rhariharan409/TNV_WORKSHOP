@@ -25,15 +25,28 @@ import {
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-export const InstructorAssignments: React.FC = () => {
+interface InstructorAssignmentsProps {
+  courseId?: string;
+}
+
+export const InstructorAssignments: React.FC<InstructorAssignmentsProps> = ({ courseId: propCourseId }) => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(searchParams.get('courseId') || null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(
+    propCourseId || searchParams.get('courseId') || null
+  );
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (propCourseId) {
+      setSelectedCourseId(propCourseId);
+      setCourseId(propCourseId);
+    }
+  }, [propCourseId]);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -80,7 +93,10 @@ export const InstructorAssignments: React.FC = () => {
       setAssignments(scopedAssignments);
       setSubmissions(scopedSubs);
 
-      if (assignedCourses.length > 0 && !courseId) {
+      if (propCourseId) {
+        setSelectedCourseId(propCourseId);
+        setCourseId(propCourseId);
+      } else if (assignedCourses.length > 0 && !courseId) {
         setCourseId(selectedCourseId || assignedCourses[0].id);
       }
     } catch (err) {
@@ -302,13 +318,15 @@ export const InstructorAssignments: React.FC = () => {
           {/* Back button & Course summary */}
           <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <button
-                onClick={() => handleSelectCourse(null)}
-                className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[#1b6b3a] transition-colors w-fit"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to All Assigned Courses
-              </button>
+              {!propCourseId && (
+                <button
+                  onClick={() => handleSelectCourse(null)}
+                  className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[#1b6b3a] transition-colors w-fit"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back to All Assigned Courses
+                </button>
+              )}
 
               <div className="flex items-center gap-2">
                 <Link to={`/instructor/submissions?courseId=${selectedCourse?.id}`}>

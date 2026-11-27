@@ -26,15 +26,27 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-export const InstructorSubmissions: React.FC = () => {
+interface InstructorSubmissionsProps {
+  courseId?: string;
+}
+
+export const InstructorSubmissions: React.FC<InstructorSubmissionsProps> = ({ courseId: propCourseId }) => {
   const { user } = useAuth();
 
   // Active Tab: 'audit' (100% completion dossiers) or 'submissions' (individual assignments)
-  const [activeTab, setActiveTab] = useState<'audit' | 'submissions'>('audit');
+  const [activeTab, setActiveTab] = useState<'audit' | 'submissions'>(propCourseId ? 'submissions' : 'audit');
 
   // Course filter state
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(searchParams.get('courseId') || null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(
+    propCourseId || searchParams.get('courseId') || null
+  );
+
+  useEffect(() => {
+    if (propCourseId) {
+      setSelectedCourseId(propCourseId);
+    }
+  }, [propCourseId]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
@@ -222,70 +234,72 @@ export const InstructorSubmissions: React.FC = () => {
       </div>
 
       {/* Course Cards Selection (Show one card per course) */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-            Filter by Assigned Course ({courses.length})
-          </span>
-          {selectedCourseId && (
+      {!propCourseId && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Filter by Assigned Course ({courses.length})
+            </span>
+            {selectedCourseId && (
+              <button
+                onClick={() => {
+                  setSelectedCourseId(null);
+                  setSearchParams({});
+                }}
+                className="text-xs text-[#1b6b3a] dark:text-emerald-400 font-bold hover:underline"
+              >
+                Reset to All Assigned Courses
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             <button
               onClick={() => {
                 setSelectedCourseId(null);
                 setSearchParams({});
               }}
-              className="text-xs text-[#1b6b3a] dark:text-emerald-400 font-bold hover:underline"
+              className={`p-3 rounded-xl border text-left transition-all ${
+                selectedCourseId === null
+                  ? 'bg-emerald-50/80 border-[#1b6b3a] dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500/30'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+              }`}
             >
-              Reset to All Assigned Courses
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Overview</span>
+              <span className="font-extrabold text-xs block truncate">All My Courses</span>
+              <span className="text-[10px] text-slate-500">{submissions.length} Submissions</span>
             </button>
-          )}
-        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          <button
-            onClick={() => {
-              setSelectedCourseId(null);
-              setSearchParams({});
-            }}
-            className={`p-3 rounded-xl border text-left transition-all ${
-              selectedCourseId === null
-                ? 'bg-emerald-50/80 border-[#1b6b3a] dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500/30'
-                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-            }`}
-          >
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Overview</span>
-            <span className="font-extrabold text-xs block truncate">All My Courses</span>
-            <span className="text-[10px] text-slate-500">{submissions.length} Submissions</span>
-          </button>
-
-          {courses.map((c) => {
-            const isSel = selectedCourseId === c.id;
-            const cSubs = submissions.filter((s) => s.assignment?.course_id === c.id);
-            const cAsgns = assignments.filter((a) => a.course_id === c.id);
-            return (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setSelectedCourseId(c.id);
-                  setSearchParams({ courseId: c.id });
-                }}
-                className={`p-3 rounded-xl border text-left transition-all ${
-                  isSel
-                    ? 'bg-emerald-50/80 border-[#1b6b3a] dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500/30'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                }`}
-              >
-                <span className="text-[10px] uppercase font-bold text-slate-400 block truncate">
-                  {c.category || 'Course'}
-                </span>
-                <span className="font-extrabold text-xs block truncate">{c.title}</span>
-                <span className="text-[10px] text-slate-500 block truncate">
-                  {cAsgns.length} asgns • {cSubs.length} subs
-                </span>
-              </button>
-            );
-          })}
+            {courses.map((c) => {
+              const isSel = selectedCourseId === c.id;
+              const cSubs = submissions.filter((s) => s.assignment?.course_id === c.id);
+              const cAsgns = assignments.filter((a) => a.course_id === c.id);
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setSelectedCourseId(c.id);
+                    setSearchParams({ courseId: c.id });
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    isSel
+                      ? 'bg-emerald-50/80 border-[#1b6b3a] dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500/30'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block truncate">
+                    {c.category || 'Course'}
+                  </span>
+                  <span className="font-extrabold text-xs block truncate">{c.title}</span>
+                  <span className="text-[10px] text-slate-500 block truncate">
+                    {cAsgns.length} asgns • {cSubs.length} subs
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ========================================================== */}
       {/* TAB 1: COURSE COMPLETION AUDITS                            */}

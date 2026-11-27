@@ -22,11 +22,15 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 
-export const InstructorMaterials: React.FC = () => {
+interface InstructorMaterialsProps {
+  courseId?: string;
+}
+
+export const InstructorMaterials: React.FC<InstructorMaterialsProps> = ({ courseId: propCourseId }) => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [courses, setCourses] = useState<Course[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(propCourseId || '');
   const [materials, setMaterials] = useState<LearningMaterial[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -42,13 +46,14 @@ export const InstructorMaterials: React.FC = () => {
     setIsLoading(true);
     try {
       const assigned = await dataProvider.getInstructorCourses(user.id);
-      setCourses(assigned);
+      const filtered = propCourseId ? assigned.filter((c) => c.id === propCourseId) : assigned;
+      setCourses(filtered);
 
-      const paramCourseId = searchParams.get('courseId');
+      const paramCourseId = propCourseId || searchParams.get('courseId');
       const initialCourseId =
-        paramCourseId && assigned.some((c) => c.id === paramCourseId)
+        paramCourseId && filtered.some((c) => c.id === paramCourseId)
           ? paramCourseId
-          : assigned[0]?.id || '';
+          : filtered[0]?.id || '';
 
       setSelectedCourseId(initialCourseId);
 
@@ -65,7 +70,7 @@ export const InstructorMaterials: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [user?.id]);
+  }, [user?.id, propCourseId]);
 
   const handleCourseChange = async (courseId: string) => {
     setSelectedCourseId(courseId);
@@ -147,22 +152,24 @@ export const InstructorMaterials: React.FC = () => {
       </div>
 
       {/* Course Selector Filter */}
-      <div className="flex items-center gap-3">
-        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
-          Filter by Course:
-        </label>
-        <Select
-          value={selectedCourseId}
-          onChange={(e) => handleCourseChange(e.target.value)}
-          className="max-w-xs text-xs"
-        >
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </Select>
-      </div>
+      {!propCourseId && (
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
+            Filter by Course:
+          </label>
+          <Select
+            value={selectedCourseId}
+            onChange={(e) => handleCourseChange(e.target.value)}
+            className="max-w-xs text-xs"
+          >
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
 
       {/* Materials List */}
       {isLoading ? (

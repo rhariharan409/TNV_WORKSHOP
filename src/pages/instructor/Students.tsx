@@ -35,13 +35,17 @@ interface StudentRow {
   }>;
 }
 
-export const InstructorStudents: React.FC = () => {
+interface InstructorStudentsProps {
+  courseId?: string;
+}
+
+export const InstructorStudents: React.FC<InstructorStudentsProps> = ({ courseId: propCourseId }) => {
   const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [studentRows, setStudentRows] = useState<StudentRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [courseFilter, setCourseFilter] = useState('all');
+  const [courseFilter, setCourseFilter] = useState(propCourseId || 'all');
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<StudentRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -51,11 +55,12 @@ export const InstructorStudents: React.FC = () => {
     try {
       // 1. Fetch courses assigned to this instructor
       const assignedCourses = await dataProvider.getInstructorCourses(user.id);
-      setCourses(assignedCourses);
-      const courseIdSet = new Set(assignedCourses.map((c) => c.id));
+      const filteredCourses = propCourseId ? assignedCourses.filter((c) => c.id === propCourseId) : assignedCourses;
+      setCourses(filteredCourses);
+      const courseIdSet = new Set(filteredCourses.map((c) => c.id));
 
       // 2. Fetch course enrollments for these assigned courses
-      const allEnrs = await dataProvider.getCourseEnrollments();
+      const allEnrs = await dataProvider.getCourseEnrollments(propCourseId);
       const scopedEnrs = allEnrs.filter((e) => courseIdSet.has(e.course_id));
 
       // 3. Group by unique student
@@ -146,14 +151,16 @@ export const InstructorStudents: React.FC = () => {
             />
           </div>
 
-          <Select
-            value={courseFilter}
-            onChange={(e) => setCourseFilter(e.target.value)}
-            options={[
-              { value: 'all', label: 'All My Assigned Courses' },
-              ...courses.map((c) => ({ value: c.id, label: c.title })),
-            ]}
-          />
+          {!propCourseId && (
+            <Select
+              value={courseFilter}
+              onChange={(e) => setCourseFilter(e.target.value)}
+              options={[
+                { value: 'all', label: 'All My Assigned Courses' },
+                ...courses.map((c) => ({ value: c.id, label: c.title })),
+              ]}
+            />
+          )}
 
           <Select
             value={statusFilter}

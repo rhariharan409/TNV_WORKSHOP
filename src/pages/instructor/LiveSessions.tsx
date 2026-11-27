@@ -24,7 +24,11 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
-export const InstructorLiveSessions: React.FC = () => {
+interface InstructorLiveSessionsProps {
+  courseId?: string;
+}
+
+export const InstructorLiveSessions: React.FC<InstructorLiveSessionsProps> = ({ courseId: propCourseId }) => {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -37,7 +41,7 @@ export const InstructorLiveSessions: React.FC = () => {
   const todayStr = new Date().toISOString().split('T')[0];
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [courseId, setCourseId] = useState('');
+  const [courseId, setCourseId] = useState(propCourseId || '');
   const [scheduledDate, setScheduledDate] = useState(todayStr);
   const [startTime, setStartTime] = useState('18:00');
   const [endTime, setEndTime] = useState('19:30');
@@ -50,15 +54,18 @@ export const InstructorLiveSessions: React.FC = () => {
     setIsLoading(true);
     try {
       const assigned = await dataProvider.getInstructorCourses(user.id);
-      setCourses(assigned);
+      const filtered = propCourseId ? assigned.filter((c) => c.id === propCourseId) : assigned;
+      setCourses(filtered);
 
-      const assignedCourseIds = new Set(assigned.map((c) => c.id));
+      const targetIds = propCourseId ? new Set([propCourseId]) : new Set(assigned.map((c) => c.id));
       const allSessions = await dataProvider.getLiveSessions();
-      const scoped = allSessions.filter((s) => s.course_id && assignedCourseIds.has(s.course_id));
+      const scoped = allSessions.filter((s) => s.course_id && targetIds.has(s.course_id));
       setSessions(scoped);
 
-      if (assigned.length > 0 && !courseId) {
-        setCourseId(assigned[0].id);
+      if (propCourseId) {
+        setCourseId(propCourseId);
+      } else if (filtered.length > 0 && !courseId) {
+        setCourseId(filtered[0].id);
       }
     } catch (err) {
       console.error('Failed to load instructor live sessions:', err);
@@ -69,7 +76,7 @@ export const InstructorLiveSessions: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [user?.id]);
+  }, [user?.id, propCourseId]);
 
   // Compute live timing status
   const getSessionTimingStatus = (dateStr: string, startStr: string, endStr: string) => {
