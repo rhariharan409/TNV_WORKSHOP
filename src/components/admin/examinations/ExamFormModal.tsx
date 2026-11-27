@@ -12,7 +12,7 @@ interface ExamFormModalProps {
   onClose: () => void;
   exam: Examination | null;
   courses: Course[];
-  onSuccess: () => void;
+  onSuccess: (newExam?: Examination) => void;
 }
 
 export const ExamFormModal: React.FC<ExamFormModalProps> = ({
@@ -33,8 +33,11 @@ export const ExamFormModal: React.FC<ExamFormModalProps> = ({
   const [endTime, setEndTime] = useState('');
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
   const [showAnswerReview, setShowAnswerReview] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const questionsCount = exam?.questions?.length ?? 0;
 
   useEffect(() => {
     if (exam) {
@@ -49,6 +52,7 @@ export const ExamFormModal: React.FC<ExamFormModalProps> = ({
       setEndTime(exam.end_time ? exam.end_time.slice(0, 16) : '');
       setShuffleQuestions(exam.shuffle_questions !== undefined ? exam.shuffle_questions : true);
       setShowAnswerReview(exam.show_answer_review !== undefined ? exam.show_answer_review : false);
+      setIsPublished(Boolean(exam.is_published));
     } else {
       setCourseId(courses.length > 0 ? courses[0].id : '');
       setTitle('');
@@ -61,6 +65,7 @@ export const ExamFormModal: React.FC<ExamFormModalProps> = ({
       setEndTime('');
       setShuffleQuestions(true);
       setShowAnswerReview(false);
+      setIsPublished(false);
     }
     setErrorMsg(null);
   }, [exam, courses, isOpen]);
@@ -96,6 +101,11 @@ export const ExamFormModal: React.FC<ExamFormModalProps> = ({
       }
     }
 
+    if (isPublished && questionsCount === 0) {
+      setErrorMsg('Add questions first before publishing.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const payload: Partial<Examination> = {
@@ -110,19 +120,21 @@ export const ExamFormModal: React.FC<ExamFormModalProps> = ({
         end_time: endTime ? new Date(endTime).toISOString() : null,
         shuffle_questions: shuffleQuestions,
         show_answer_review: showAnswerReview,
+        is_published: questionsCount > 0 ? isPublished : false,
       };
 
+      let createdExam: Examination | null = null;
       if (exam) {
         await dataProvider.updateExamination(exam.id, payload);
       } else {
         // New exams are always created as Draft
-        await dataProvider.createExamination({
+        createdExam = await dataProvider.createExamination({
           ...payload,
           is_published: false,
         });
       }
 
-      onSuccess();
+      onSuccess(createdExam || undefined);
       onClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to save examination.');
@@ -257,6 +269,39 @@ export const ExamFormModal: React.FC<ExamFormModalProps> = ({
             />
             <span>Show question-by-question answer review after submission (Default: OFF)</span>
           </label>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+            Publish Status
+          </span>
+
+          <span
+            title={questionsCount === 0 ? "Add questions first" : undefined}
+            className="inline-block"
+          >
+            <label
+              className={`flex items-center gap-2.5 text-xs font-semibold ${
+                questionsCount === 0
+                  ? 'text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
+                  : 'text-slate-700 dark:text-slate-300 cursor-pointer'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={isPublished}
+                disabled={questionsCount === 0}
+                onChange={(e) => setIsPublished(e.target.checked)}
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 disabled:opacity-50"
+              />
+              <span>Publish Examination (make visible to enrolled students)</span>
+            </label>
+          </span>
+          {questionsCount === 0 && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+              * Add questions first before publishing this exam.
+            </p>
+          )}
         </div>
 
         <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">

@@ -3217,6 +3217,9 @@ export const dataProvider = {
   },
 
   async createExamination(exam: Partial<Examination>): Promise<Examination> {
+    if (exam.is_published) {
+      throw new Error('An examination cannot be published with 0 questions. Add questions first.');
+    }
     if (isSupabaseConfigured()) {
       const passingPct = exam.passing_percentage !== undefined ? exam.passing_percentage : 50;
       const totalMarks = exam.total_marks || 50;
@@ -3291,6 +3294,12 @@ export const dataProvider = {
   },
 
   async updateExamination(examId: string, exam: Partial<Examination>): Promise<Examination> {
+    if (exam.is_published === true) {
+      const questions = await this.getExamQuestionsAdmin(examId);
+      if (!questions || questions.length === 0) {
+        throw new Error('An examination cannot be published with 0 questions. Add questions first.');
+      }
+    }
     if (isSupabaseConfigured()) {
       const updateData: any = {};
       if (exam.course_id !== undefined) updateData.course_id = exam.course_id;
@@ -3436,8 +3445,8 @@ export const dataProvider = {
     if (isSupabaseConfigured()) {
       if (publish) {
         const questions = await this.getExamQuestionsAdmin(examId);
-        if (questions.length < 10) {
-          throw new Error('An examination needs at least 10 questions before it can be published.');
+        if (!questions || questions.length === 0) {
+          throw new Error('An examination cannot be published with 0 questions. Add questions first.');
         }
       }
       return this.updateExamination(examId, { is_published: publish });

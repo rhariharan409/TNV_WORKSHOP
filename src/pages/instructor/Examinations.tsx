@@ -76,11 +76,11 @@ export const InstructorExaminations: React.FC = () => {
     loadData();
   }, [user?.id]);
 
-  // Publish / Unpublish Toggle with MANDATORY 10-QUESTION RULE
+  // Publish / Unpublish Toggle
   const handleTogglePublish = async (exam: Examination) => {
     const questionsCount = exam.questions?.length ?? 0;
-    if (!exam.is_published && questionsCount < 10) {
-      alert('An examination needs at least 10 questions before it can be published.');
+    if (!exam.is_published && questionsCount === 0) {
+      alert('Add questions first');
       return;
     }
 
@@ -93,6 +93,14 @@ export const InstructorExaminations: React.FC = () => {
       alert(err.message || 'Failed to update publication status.');
     } finally {
       setPublishActionLoading(null);
+    }
+  };
+
+  const handleExamFormSuccess = async (createdExam?: Examination) => {
+    await loadData();
+    if (createdExam) {
+      setSelectedExamForQuestions(createdExam);
+      setIsQuestionsModalOpen(true);
     }
   };
 
@@ -283,16 +291,16 @@ export const InstructorExaminations: React.FC = () => {
                                 </span>
                               )}
 
-                              {/* Question Counter X/10 */}
+                              {/* Question Counter */}
                               <span
                                 className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold flex items-center gap-1 ${
-                                  has10Questions
+                                  questionsCount > 0
                                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                                     : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
                                 }`}
                               >
                                 <HelpCircle className="w-3 h-3" />
-                                {questionsCount}/10 Questions
+                                {questionsCount} Question{questionsCount !== 1 ? 's' : ''}
                               </span>
 
                               <Badge variant="outline">
@@ -365,15 +373,15 @@ export const InstructorExaminations: React.FC = () => {
                             {/* Publish / Unpublish Button */}
                             <span
                               title={
-                                !exam.is_published && !has10Questions
-                                  ? 'Add at least 10 questions to publish'
+                                !exam.is_published && questionsCount === 0
+                                  ? 'Add questions first'
                                   : undefined
                               }
                             >
                               <Button
                                 variant={exam.is_published ? 'outline' : 'secondary'}
                                 size="sm"
-                                disabled={!exam.is_published && !has10Questions}
+                                disabled={!exam.is_published && questionsCount === 0}
                                 isLoading={publishActionLoading === exam.id}
                                 onClick={() => handleTogglePublish(exam)}
                                 leftIcon={
@@ -431,7 +439,7 @@ export const InstructorExaminations: React.FC = () => {
           }}
           exam={selectedExamForForm}
           courses={courses}
-          onSuccess={loadData}
+          onSuccess={handleExamFormSuccess}
         />
       )}
 
