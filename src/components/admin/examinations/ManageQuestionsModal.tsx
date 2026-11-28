@@ -62,9 +62,34 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
   const [csvPreview, setCsvPreview] = useState<ParsedQuestionRow[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [csvImportMode, setCsvImportMode] = useState<'replace' | 'append'>('replace');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isLocked = attemptsCount > 0;
+
+  const placeholderQuestions = questions.filter(
+    (q) =>
+      !q.question_text ||
+      !q.question_text.trim() ||
+      q.question_text.startsWith('What is the primary technical objective of Module')
+  );
+
+  const handlePurgePlaceholders = async () => {
+    if (isLocked) return;
+    if (
+      !confirm(
+        `Are you sure you want to remove ${placeholderQuestions.length} placeholder question(s) with empty prompts?`
+      )
+    )
+      return;
+    for (const q of placeholderQuestions) {
+      try {
+        await dataProvider.deleteExamQuestion(q.id);
+      } catch {}
+    }
+    await loadQuestions();
+    onQuestionsUpdated();
+  };
 
   const loadQuestions = async () => {
     if (!exam) return;
@@ -249,8 +274,12 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
         marks: r.marks || 2,
       }));
 
-      await dataProvider.importExamQuestionsCSV(exam.id, payload);
-      alert(`Successfully imported ${validRows.length} questions into the question bank!`);
+      await dataProvider.importExamQuestionsCSV(exam.id, payload, csvImportMode === 'replace');
+      alert(
+        csvImportMode === 'replace'
+          ? `Successfully replaced question bank with ${validRows.length} questions from CSV (all placeholders removed)!`
+          : `Successfully imported ${validRows.length} questions into the question bank!`
+      );
       setCsvPreview([]);
       setCsvFileName('');
       setActiveTab('list');
@@ -366,6 +395,25 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
         {/* TAB 1: QUESTIONS LIST */}
         {activeTab === 'list' && (
           <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+            {placeholderQuestions.length > 0 && !isLocked && (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-medium">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>{placeholderQuestions.length} placeholder / empty question(s) found in bank.</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={handlePurgePlaceholders}
+                  leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                  className="font-bold text-xs"
+                >
+                  Remove Placeholders
+                </Button>
+              </div>
+            )}
+
             {isLoading ? (
               <div className="p-8 text-center text-xs text-slate-400">Loading questions...</div>
             ) : questions.length === 0 ? (
@@ -682,6 +730,33 @@ export const ManageQuestionsModal: React.FC<ManageQuestionsModalProps> = ({
                     {csvFileName} ({csvPreview.length} rows parsed)
                   </span>
                 )}
+              </div>
+            </div>
+
+            {/* Import Mode: Replace vs Append */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <span className="font-bold text-slate-800 dark:text-slate-200">Import Mode:</span>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-emerald-700 dark:text-emerald-400">
+                  <input
+                    type="radio"
+                    name="modalCsvImportMode"
+                    checked={csvImportMode === 'replace'}
+                    onChange={() => setCsvImportMode('replace')}
+                    className="text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span>Replace existing questions (Removes placeholders & old questions)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-600 dark:text-slate-400">
+                  <input
+                    type="radio"
+                    name="modalCsvImportMode"
+                    checked={csvImportMode === 'append'}
+                    onChange={() => setCsvImportMode('append')}
+                    className="text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span>Append to existing questions</span>
+                </label>
               </div>
             </div>
 

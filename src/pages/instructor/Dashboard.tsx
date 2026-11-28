@@ -22,6 +22,7 @@ import {
   Layers,
   Sparkles,
   AlertTriangle,
+  AlertCircle,
   UserCheck,
   CheckCircle2,
   Plus,
@@ -56,6 +57,7 @@ export const InstructorDashboard: React.FC = () => {
   const [requestMessage, setRequestMessage] = useState('');
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [requestSuccessMessage, setRequestSuccessMessage] = useState<string | null>(null);
+  const [requestErrorMessage, setRequestErrorMessage] = useState<string | null>(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   const loadData = async () => {
@@ -139,6 +141,7 @@ export const InstructorDashboard: React.FC = () => {
 
   const handleOpenRequestModal = async () => {
     setIsRequestModalOpen(true);
+    setRequestErrorMessage(null);
     try {
       const allCourses = await dataProvider.getCourses();
       const pub = allCourses.filter((c) => c.is_published);
@@ -155,6 +158,7 @@ export const InstructorDashboard: React.FC = () => {
     e.preventDefault();
     if (!user) return;
     setIsSubmittingRequest(true);
+    setRequestErrorMessage(null);
     try {
       await dataProvider.createCourseAssignmentRequest({
         instructor_id: user.id,
@@ -169,7 +173,7 @@ export const InstructorDashboard: React.FC = () => {
       setTimeout(() => setRequestSuccessMessage(null), 5000);
       setPendingRequestsCount((prev) => prev + 1);
     } catch (err: any) {
-      alert(err.message || 'Failed to submit course assignment request.');
+      setRequestErrorMessage(err.message || 'Failed to submit course assignment request.');
     } finally {
       setIsSubmittingRequest(false);
     }
@@ -758,6 +762,12 @@ export const InstructorDashboard: React.FC = () => {
         description="Select a published course curriculum and submit an assignment request to academy administrators."
       >
         <form onSubmit={handleSubmitRequest} className="space-y-4 pt-2">
+          {requestErrorMessage && (
+            <div className="p-3 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800 text-xs font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{requestErrorMessage}</span>
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
               Select Published Course <span className="text-rose-500">*</span>

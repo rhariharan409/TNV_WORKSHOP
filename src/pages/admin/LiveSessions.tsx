@@ -121,13 +121,13 @@ export const AdminLiveSessions: React.FC = () => {
       return;
     }
 
-    const trimmedLink = meetingLink.trim();
+    const cleanLink = meetingLink.trim().toLowerCase().split('?')[0].replace(/\/+$/, '');
     const GOOGLE_MEET_REGEX = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
-    if (!trimmedLink) {
+    if (!cleanLink) {
       setMeetingLinkError('Meeting link is required');
       return;
     }
-    if (!GOOGLE_MEET_REGEX.test(trimmedLink)) {
+    if (!GOOGLE_MEET_REGEX.test(cleanLink)) {
       setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/abc-defg-hij');
       return;
     }
@@ -146,7 +146,7 @@ export const AdminLiveSessions: React.FC = () => {
         scheduled_date: scheduledDate,
         start_time: startTime,
         end_time: endTime,
-        meeting_link: trimmedLink,
+        meeting_link: cleanLink,
         platform: platform.trim() || 'Google Meet',
         instructor_name: user?.full_name || 'Thamilaran (Admin)',
         is_published: true,
@@ -471,13 +471,14 @@ export const AdminLiveSessions: React.FC = () => {
               if (meetingLinkError) setMeetingLinkError(null);
             }}
             onBlur={() => {
-              const trimmed = meetingLink.trim();
+              const clean = meetingLink.trim().toLowerCase().split('?')[0].replace(/\/+$/, '');
               const GOOGLE_MEET_REGEX = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
-              if (!trimmed) {
+              if (!clean) {
                 setMeetingLinkError('Meeting link is required');
-              } else if (!GOOGLE_MEET_REGEX.test(trimmed)) {
+              } else if (!GOOGLE_MEET_REGEX.test(clean)) {
                 setMeetingLinkError('Invalid meeting link. Must match format: https://meet.google.com/abc-defg-hij');
               } else {
+                setMeetingLink(clean);
                 setMeetingLinkError(null);
               }
             }}

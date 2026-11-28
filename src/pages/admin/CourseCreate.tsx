@@ -106,6 +106,7 @@ export const AdminCourseCreate: React.FC = () => {
   const [csvPreview, setCsvPreview] = useState<ParsedQuestionRow[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [isCsvImporting, setIsCsvImporting] = useState(false);
+  const [csvImportMode, setCsvImportMode] = useState<'replace' | 'append'>('replace');
   const csvFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Step 4: Certificate Template Selection
@@ -258,7 +259,7 @@ export const AdminCourseCreate: React.FC = () => {
       });
 
       // Load existing examination for this course if one exists
-      dataProvider.getExaminations(editCourseId).then((eList) => {
+      dataProvider.getExaminations(editCourseId).then(async (eList) => {
         const ex = eList.find((e) => e.course_id === editCourseId);
         if (ex) {
           setExamTitle(ex.title);
@@ -266,16 +267,29 @@ export const AdminCourseCreate: React.FC = () => {
           setExamTotalMarks(String(ex.total_marks || 50));
           setExamPassingPercentage(String(ex.passing_percentage || 50));
           setExamPassingMarks(String(ex.passing_marks || 25));
-          if (ex.questions && ex.questions.length > 0) {
-            setExamQuestions(
-              ex.questions.map((q) => ({
-                id: q.id,
-                question_text: q.question_text,
-                options: q.options || ['Option A', 'Option B', 'Option C', 'Option D'],
-                correct_option_index: q.correct_option_index ?? 0,
-                marks: q.marks || 2,
-              }))
-            );
+          try {
+            const fullQuestions = await dataProvider.getExamQuestionsAdmin(ex.id);
+            if (fullQuestions && fullQuestions.length > 0) {
+              // Only load questions that have a valid non-empty question prompt
+              const validLoaded = fullQuestions
+                .filter((q) => q.question_text && q.question_text.trim().length > 0)
+                .map((q) => ({
+                  id: q.id,
+                  question_text: q.question_text,
+                  options:
+                    q.options && q.options.length > 0
+                      ? q.options
+                      : ['Option A', 'Option B', 'Option C', 'Option D'],
+                  correct_option_index: q.correct_option_index ?? 0,
+                  marks: q.marks || 2,
+                }));
+              setExamQuestions(validLoaded);
+            } else {
+              setExamQuestions([]);
+            }
+          } catch (err) {
+            console.error('Failed to load full exam questions:', err);
+            setExamQuestions([]);
           }
         }
       });
@@ -418,6 +432,42 @@ export const AdminCourseCreate: React.FC = () => {
     }
   };
 
+  const isPlaceholderQuestion = (q: { question_text?: string; options?: string[] }) => {
+    if (!q.question_text || !q.question_text.trim()) return true;
+    if (q.question_text.startsWith('What is the primary technical objective of Module')) return true;
+    const isDefaultOptions =
+      q.options &&
+      q.options.length === 4 &&
+      q.options[0]?.toLowerCase() === 'option a' &&
+      q.options[1]?.toLowerCase() === 'option b' &&
+      q.options[2]?.toLowerCase() === 'option c' &&
+      q.options[3]?.toLowerCase() === 'option d';
+    if (isDefaultOptions && (!q.question_text.trim() || q.question_text.toLowerCase().includes('sample'))) {
+      return true;
+    }
+    return false;
+  };
+
+  const hasPlaceholders = examQuestions.some((q) => isPlaceholderQuestion(q));
+
+  const handleClearPlaceholders = () => {
+    const cleaned = examQuestions.filter((q) => !isPlaceholderQuestion(q));
+    setExamQuestions(cleaned);
+    const sumMarks = cleaned.reduce((sum, q) => sum + (q.marks || 2), 0);
+    setExamTotalMarks(String(sumMarks > 0 ? sumMarks : 0));
+    const pct = parseInt(examPassingPercentage, 10) || 50;
+    setExamPassingMarks(String(Math.ceil((sumMarks * pct) / 100)));
+    showSuccessBanner('Cleared all placeholder questions from examination.');
+  };
+
+  const handleClearAllQuestions = () => {
+    if (!confirm('Are you sure you want to remove all questions from this examination?')) return;
+    setExamQuestions([]);
+    setExamTotalMarks('0');
+    setExamPassingMarks('0');
+    showSuccessBanner('Cleared all questions from examination.');
+  };
+
   const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -452,7 +502,16 @@ export const AdminCourseCreate: React.FC = () => {
         marks: r.marks || 2,
       }));
 
-      const updated = [...examQuestions, ...newQuestions];
+      let updated: typeof examQuestions;
+      if (csvImportMode === 'replace') {
+        // REPLACE ALL: Complete fresh import from CSV (all placeholders gone!)
+        updated = newQuestions;
+      } else {
+        // APPEND: Remove any placeholders/empty questions, keep real existing questions
+        const realExisting = examQuestions.filter((q) => !isPlaceholderQuestion(q));
+        updated = [...realExisting, ...newQuestions];
+      }
+
       setExamQuestions(updated);
 
       const sumMarks = updated.reduce((sum, q) => sum + (q.marks || 2), 0);
@@ -462,7 +521,11 @@ export const AdminCourseCreate: React.FC = () => {
         setExamPassingMarks(String(Math.ceil((sumMarks * pct) / 100)));
       }
 
-      showSuccessBanner(`Successfully imported ${validRows.length} questions from CSV to examination!`);
+      showSuccessBanner(
+        csvImportMode === 'replace'
+          ? `Successfully replaced question bank with ${validRows.length} questions from CSV (all placeholders removed)!`
+          : `Successfully imported ${validRows.length} questions from CSV to examination (placeholders removed)!`
+      );
       setIsCsvModalOpen(false);
       setCsvPreview([]);
       setCsvFileName('');
@@ -509,19 +572,21 @@ export const AdminCourseCreate: React.FC = () => {
     }
 
     // 2. Save questions
-    if (examQuestions.length > 0) {
-      const dbQuestions = await dataProvider.getExamQuestionsAdmin(savedExamId);
-      const dbQuestionMap = new Map(
-        dbQuestions.map((q) => [q.question_text.trim().toLowerCase(), q.id])
-      );
+    const dbQuestions = await dataProvider.getExamQuestionsAdmin(savedExamId);
+    const activeDbIds = new Set<string>();
 
+    if (examQuestions.length > 0) {
       for (let idx = 0; idx < examQuestions.length; idx++) {
         const q = examQuestions[idx];
         const existingDbId =
           q.id && !q.id.startsWith('temp_')
             ? q.id
-            : dbQuestionMap.get(q.question_text.trim().toLowerCase());
-        if (existingDbId) {
+            : dbQuestions.find(
+                (dbQ) => dbQ.question_text.trim().toLowerCase() === q.question_text.trim().toLowerCase()
+              )?.id;
+
+        if (existingDbId && dbQuestions.some((dbQ) => dbQ.id === existingDbId)) {
+          activeDbIds.add(existingDbId);
           await dataProvider.updateExamQuestion(existingDbId, {
             question_text: q.question_text,
             options: q.options,
@@ -530,7 +595,7 @@ export const AdminCourseCreate: React.FC = () => {
             order_index: idx + 1,
           });
         } else {
-          await dataProvider.createExamQuestion({
+          const created = await dataProvider.createExamQuestion({
             exam_id: savedExamId,
             question_text: q.question_text,
             options: q.options,
@@ -538,10 +603,24 @@ export const AdminCourseCreate: React.FC = () => {
             marks: q.marks,
             order_index: idx + 1,
           });
+          activeDbIds.add(created.id);
         }
       }
+    }
 
-      // Publish examination now that questions exist
+    // Delete any old questions in DB that are no longer in examQuestions (e.g. replaced placeholders)
+    for (const dbQ of dbQuestions) {
+      if (!activeDbIds.has(dbQ.id)) {
+        try {
+          await dataProvider.deleteExamQuestion(dbQ.id);
+        } catch (delErr) {
+          console.warn('Notice removing old exam question:', delErr);
+        }
+      }
+    }
+
+    // Publish examination now that questions exist
+    if (examQuestions.length > 0) {
       try {
         await dataProvider.publishExamination(savedExamId, true);
       } catch (e) {
@@ -2453,6 +2532,32 @@ export const AdminCourseCreate: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {hasPlaceholders && (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={handleClearPlaceholders}
+                      leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                      className="font-bold text-xs"
+                      title="Purge all placeholder questions with empty or sample prompts"
+                    >
+                      Remove Placeholders ({examQuestions.filter(isPlaceholderQuestion).length})
+                    </Button>
+                  )}
+
+                  {examQuestions.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClearAllQuestions}
+                      className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-rose-200 dark:border-rose-800"
+                    >
+                      Clear All
+                    </Button>
+                  )}
+
                   <Button
                     type="button"
                     variant="outline"
@@ -3112,6 +3217,33 @@ export const AdminCourseCreate: React.FC = () => {
                   {csvFileName} ({csvPreview.length} rows parsed)
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Import Mode: Replace vs Append */}
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <span className="font-bold text-slate-800 dark:text-slate-200">Import Mode:</span>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer font-bold text-emerald-700 dark:text-emerald-400">
+                <input
+                  type="radio"
+                  name="csvImportMode"
+                  checked={csvImportMode === 'replace'}
+                  onChange={() => setCsvImportMode('replace')}
+                  className="text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <span>Replace existing questions (Removes placeholders & old questions)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-600 dark:text-slate-400">
+                <input
+                  type="radio"
+                  name="csvImportMode"
+                  checked={csvImportMode === 'append'}
+                  onChange={() => setCsvImportMode('append')}
+                  className="text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <span>Append to existing questions</span>
+              </label>
             </div>
           </div>
 

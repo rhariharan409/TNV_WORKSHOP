@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Profile, UserRole } from '../types/database';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { dataProvider } from '../lib/dataProvider';
+import { dataProvider, clearInstructorCache } from '../lib/dataProvider';
 import { generateUUID, EMAIL_REGEX } from '../lib/utils';
 
 interface AuthContextType {
@@ -440,6 +440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
     const logout = async (): Promise<void> => {
+      clearInstructorCache();
       if (isConfigured) {
         try {
           await supabase.auth.signOut();

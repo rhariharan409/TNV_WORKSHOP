@@ -72,12 +72,26 @@ interface InstructorDataCache {
   timestamp: number;
 }
 
-let instructorDataCache: InstructorDataCache | null = null;
-let inFlightInstructorPromise: Promise<any> | null = null;
+const instructorCacheMap = new Map<string, InstructorDataCache>();
+const inFlightPromisesMap = new Map<string, Promise<any>>();
 
 export function clearInstructorCache(): void {
-  instructorDataCache = null;
-  inFlightInstructorPromise = null;
+  instructorCacheMap.clear();
+  inFlightPromisesMap.clear();
+}
+
+async function getAuthHeader(): Promise<Record<string, string>> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        return { Authorization: `Bearer ${session.access_token}` };
+      }
+    } catch (e) {
+      console.warn('Notice getting Supabase auth token:', e);
+    }
+  }
+  return {};
 }
 
 export function getCurrentUserRole(): string | null {
@@ -95,41 +109,54 @@ export function getCurrentUserRole(): string | null {
 export async function getInstructorData(force = false, targetInstructorId?: string): Promise<any> {
   if (typeof window === 'undefined') return null;
 
+  let resolvedId = targetInstructorId;
+  if (!resolvedId) {
+    const authSession = localStorage.getItem('tnv_auth_session');
+    resolvedId = authSession ? JSON.parse(authSession).id : 'default';
+  }
+  const cacheKey = resolvedId || 'default';
+
   const now = Date.now();
-  if (!force && instructorDataCache && now - instructorDataCache.timestamp < 60_000) {
-    return instructorDataCache.data;
+  const cached = instructorCacheMap.get(cacheKey);
+  if (!force && cached && now - cached.timestamp < 60_000) {
+    return cached.data;
   }
 
-  if (inFlightInstructorPromise) {
-    return inFlightInstructorPromise;
+  const existingInFlight = inFlightPromisesMap.get(cacheKey);
+  if (existingInFlight) {
+    return existingInFlight;
   }
 
-  inFlightInstructorPromise = (async () => {
+  const inFlightPromise = (async () => {
     try {
-      let resolvedId = targetInstructorId;
-      if (!resolvedId) {
-        const authSession = localStorage.getItem('tnv_auth_session');
-        resolvedId = authSession ? JSON.parse(authSession).id : null;
-      }
-      const res = await fetch(`/api/instructor/data${resolvedId ? `?instructorId=${resolvedId}` : ''}`);
+      const authHeader = await getAuthHeader();
+      const res = await fetch(
+        `/api/instructor/data${resolvedId && resolvedId !== 'default' ? `?instructorId=${resolvedId}` : ''}`,
+        {
+          headers: {
+            ...authHeader,
+          },
+        }
+      );
       if (!res.ok) {
         throw new Error(`Failed to fetch instructor data (${res.status})`);
       }
       const json = await res.json();
-      instructorDataCache = {
+      instructorCacheMap.set(cacheKey, {
         data: json,
         timestamp: Date.now(),
-      };
+      });
       return json;
     } catch (err) {
       console.warn('Notice fetching instructor data:', err);
-      return instructorDataCache?.data || null;
+      return instructorCacheMap.get(cacheKey)?.data || null;
     } finally {
-      inFlightInstructorPromise = null;
+      inFlightPromisesMap.delete(cacheKey);
     }
   })();
 
-  return inFlightInstructorPromise;
+  inFlightPromisesMap.set(cacheKey, inFlightPromise);
+  return inFlightPromise;
 }
 
 // Unified Data Provider API
@@ -315,7 +342,7 @@ export const dataProvider = {
               if (!existingIds.has(s.id)) profiles.push(s);
             });
           }
-        } catch {}
+        } catch { }
       }
       return profiles;
     }
@@ -611,7 +638,7 @@ export const dataProvider = {
               if (isPaid === undefined && parsed.is_paid !== undefined) isPaid = parsed.is_paid;
               if (price === undefined && parsed.price !== undefined) price = parsed.price;
             }
-          } catch {}
+          } catch { }
         }
         return {
           ...c,
@@ -698,7 +725,7 @@ export const dataProvider = {
             if (isPaid === undefined && parsed.is_paid !== undefined) isPaid = parsed.is_paid;
             if (price === undefined && parsed.price !== undefined) price = parsed.price;
           }
-        } catch {}
+        } catch { }
       }
 
       return {
@@ -781,7 +808,7 @@ export const dataProvider = {
             is_paid: Boolean(course.is_paid),
             price: Number(course.price) || 0,
           }));
-        } catch {}
+        } catch { }
       }
 
       const createdCourse = {
@@ -818,7 +845,7 @@ export const dataProvider = {
             ...(updates.is_paid !== undefined ? { is_paid: Boolean(updates.is_paid) } : {}),
             ...(updates.price !== undefined ? { price: Number(updates.price) || 0 } : {}),
           }));
-        } catch {}
+        } catch { }
       }
 
       const payload: any = { ...updates, updated_at: new Date().toISOString() };
@@ -1224,7 +1251,7 @@ export const dataProvider = {
                 results = results.filter((e: any) => e.course_id === courseId);
               }
             }
-          } catch {}
+          } catch { }
         }
       }
 
@@ -1266,7 +1293,7 @@ export const dataProvider = {
         try {
           const cached = localStorage.getItem(`tnv_course_pricing_${courseId}`);
           if (cached && JSON.parse(cached).is_paid) isPaidCourse = true;
-        } catch {}
+        } catch { }
       }
 
       // Paid courses require admin payment verification before activation
@@ -1429,7 +1456,7 @@ export const dataProvider = {
           const filtered = list.filter((e: any) => e.id !== enrollmentId && (courseId ? e.course_id !== courseId : true));
           localStorage.setItem('tnv_lms_course_enrollments', JSON.stringify(filtered));
         }
-      } catch {}
+      } catch { }
     }
   },
   async getStudentCourseEnrollments(studentId: string): Promise<CourseEnrollment[]> {
@@ -1773,7 +1800,7 @@ export const dataProvider = {
   },
 
   async getStudentCourseRealScore(studentId: string, courseId: string): Promise<number> {
-      if(!studentId || !courseId) return 0;
+    if (!studentId || !courseId) return 0;
     try {
       if (isSupabaseConfigured()) {
         // 1. Check if student has taken any examinations for this course
@@ -2198,7 +2225,7 @@ export const dataProvider = {
           if (json && json.enrollments && json.enrollments.length > enrollments.length) {
             enrollments = json.enrollments;
           }
-        } catch {}
+        } catch { }
       }
       if (adminId) {
         enrollments = enrollments.filter((e) => !e.course?.created_by || e.course.created_by === adminId);
@@ -2234,7 +2261,7 @@ export const dataProvider = {
           if (json && json.submissions && json.submissions.length > 0) {
             submissionsList = json.submissions;
           }
-        } catch {}
+        } catch { }
       }
       const quizAttemptsList = allQuizAttempts || [];
       const localCerts = getLocalStore<any[]>('certificates', []);
@@ -2851,7 +2878,7 @@ export const dataProvider = {
             subs = subs.filter((s: any) => s.assignment_id === assignmentId);
           }
         }
-      } catch {}
+      } catch { }
     }
 
     if (adminId) {
@@ -2896,16 +2923,17 @@ export const dataProvider = {
       try {
         const authSession = localStorage.getItem('tnv_auth_session');
         const user = authSession ? JSON.parse(authSession) : null;
+        const authHeader = await getAuthHeader();
         const res = await fetch('/api/instructor/grade-submission', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeader },
           body: JSON.stringify({ submissionId, marks, feedback, evaluatorId: user?.id }),
         });
         if (res.ok) {
           clearInstructorCache();
           return;
         }
-      } catch {}
+      } catch { }
     }
 
     if (isSupabaseConfigured()) {
@@ -3277,7 +3305,7 @@ export const dataProvider = {
                 return e;
               });
             }
-          } catch {}
+          } catch { }
         }
       }
 
@@ -3540,11 +3568,34 @@ export const dataProvider = {
       options: string[];
       correct_option_index: number;
       marks: number;
-    }>
+    }>,
+    replaceExisting: boolean = true
   ): Promise<ExamQuestion[]> {
     if (isSupabaseConfigured()) {
       const existing = await this.getExamQuestionsAdmin(examId);
-      let startIndex = existing.length + 1;
+
+      // If replacing (default) or if existing questions are placeholders with empty prompt, delete them
+      if (replaceExisting) {
+        for (const eq of existing) {
+          try {
+            await this.deleteExamQuestion(eq.id);
+          } catch (err) {
+            console.warn('Notice removing old exam question before CSV import:', err);
+          }
+        }
+      } else {
+        // Even when appending, delete ghost/empty placeholder questions
+        for (const eq of existing) {
+          if (!eq.question_text || !eq.question_text.trim()) {
+            try {
+              await this.deleteExamQuestion(eq.id);
+            } catch { }
+          }
+        }
+      }
+
+      const currentRemaining = replaceExisting ? [] : await this.getExamQuestionsAdmin(examId);
+      let startIndex = currentRemaining.length + 1;
       const createdList: ExamQuestion[] = [];
 
       for (const q of newQuestions) {
@@ -3937,14 +3988,17 @@ export const dataProvider = {
 
       // Instructor fallback if RLS filtered questions
       try {
-        const res = await fetch(`/api/instructor/exam-questions?examId=${examId}`);
+        const authHeader = await getAuthHeader();
+        const res = await fetch(`/api/instructor/exam-questions?examId=${examId}`, {
+          headers: { ...authHeader },
+        });
         if (res.ok) {
           const json = await res.json();
           if (json && json.length > 0) {
             return json as ExamQuestion[];
           }
         }
-      } catch {}
+      } catch { }
 
       if (error) {
         console.warn('Notice fetching admin exam questions:', error.message);
@@ -4060,7 +4114,7 @@ export const dataProvider = {
             if (json && json.examAttempts && json.examAttempts.length > attempts.length) {
               attempts = json.examAttempts;
             }
-          } catch {}
+          } catch { }
         }
       }
       if (adminId) {
@@ -4938,12 +4992,12 @@ export const dataProvider = {
       localCerts.map((c) =>
         c.id === certificateId
           ? {
-              ...c,
-              status: 'revoked',
-              revoked_at: revokedAt,
-              revoke_reason: finalReason,
-              revoked_reason: finalReason,
-            }
+            ...c,
+            status: 'revoked',
+            revoked_at: revokedAt,
+            revoke_reason: finalReason,
+            revoked_reason: finalReason,
+          }
           : c
       )
     );
@@ -5132,7 +5186,7 @@ export const dataProvider = {
           try {
             const cached = localStorage.getItem(`feedback_attachments_${fb.id}`);
             if (cached) atts = JSON.parse(cached);
-          } catch {}
+          } catch { }
         }
 
         let st = fb.status;
@@ -5140,7 +5194,7 @@ export const dataProvider = {
           try {
             const cachedStatus = localStorage.getItem(`feedback_status_${fb.id}`);
             if (cachedStatus) st = cachedStatus;
-          } catch {}
+          } catch { }
         }
         if (fb.admin_response && st === 'resolved') {
           // If admin responded, can reflect replied
@@ -5243,7 +5297,7 @@ export const dataProvider = {
       if (typeof window !== 'undefined' && data?.id && attachments.length > 0) {
         try {
           localStorage.setItem(`feedback_attachments_${data.id}`, JSON.stringify(attachments));
-        } catch {}
+        } catch { }
       }
 
       return {
@@ -5289,7 +5343,7 @@ export const dataProvider = {
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem(`feedback_status_${feedbackId}`, status);
-        } catch {}
+        } catch { }
       }
 
       if (error) {
@@ -5359,7 +5413,7 @@ export const dataProvider = {
         const list: NotesRequest[] = stored ? JSON.parse(stored) : [];
         list.unshift(reqItem);
         localStorage.setItem('tnv_notes_requests', JSON.stringify(list));
-      } catch {}
+      } catch { }
     }
 
     return reqItem;
@@ -5401,7 +5455,7 @@ export const dataProvider = {
           });
           requests = Array.from(map.values());
         }
-      } catch {}
+      } catch { }
     }
 
     return requests;
@@ -5433,7 +5487,7 @@ export const dataProvider = {
           );
           localStorage.setItem('tnv_notes_requests', JSON.stringify(updated));
         }
-      } catch {}
+      } catch { }
     }
   },
 
@@ -5843,20 +5897,24 @@ export const dataProvider = {
           .select('*, instructor:profiles!course_assignment_requests_instructor_id_fkey(*), course:courses(*)')
           .single();
 
-        if (!error && inserted) {
+        if (error) {
+          console.error('Insert into course_assignment_requests error:', error.message);
+          throw new Error(`Failed to submit request: ${error.message}`);
+        }
+
+        if (inserted) {
           newReq.instructor = inserted.instructor;
           newReq.course = inserted.course;
-        } else if (error) {
-          console.warn('Insert into course_assignment_requests notice:', error.message);
         }
-      } catch (err) {
-        console.warn('Failed to insert course assignment request into Supabase:', err);
+      } catch (err: any) {
+        console.error('Failed to insert course assignment request into Supabase:', err);
+        throw err;
       }
+    } else {
+      // Local storage fallback only when Supabase is not configured
+      const local = getLocalStore<CourseAssignmentRequest[]>('course_assignment_requests', []);
+      setLocalStore('course_assignment_requests', [newReq, ...local]);
     }
-
-    // Save to local store
-    const local = getLocalStore<CourseAssignmentRequest[]>('course_assignment_requests', []);
-    setLocalStore('course_assignment_requests', [newReq, ...local]);
 
     // Dispatch notification to all admins
     try {
@@ -6220,7 +6278,7 @@ export const dataProvider = {
           parsed.role = 'instructor';
           localStorage.setItem('tnv_auth_session', JSON.stringify(parsed));
         }
-      } catch {}
+      } catch { }
     }
   },
 
@@ -6261,7 +6319,7 @@ export const dataProvider = {
           parsed.role = 'student';
           localStorage.setItem('tnv_auth_session', JSON.stringify(parsed));
         }
-      } catch {}
+      } catch { }
     }
   },
 
@@ -6302,7 +6360,7 @@ export const dataProvider = {
             created_at: new Date().toISOString(),
           }));
         }
-      } catch {}
+      } catch { }
     }
 
     const local = getLocalStore<CourseInstructor[]>('tnv_course_instructors', []);
@@ -6332,12 +6390,13 @@ export const dataProvider = {
 
     if (typeof window !== 'undefined') {
       try {
+        const authHeader = await getAuthHeader();
         await fetch('/api/instructor/assign-course', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeader },
           body: JSON.stringify({ courseId, instructorId }),
         });
-      } catch {}
+      } catch { }
     }
 
     if (isSupabaseConfigured()) {
@@ -6361,12 +6420,13 @@ export const dataProvider = {
     clearInstructorCache();
     if (typeof window !== 'undefined') {
       try {
+        const authHeader = await getAuthHeader();
         await fetch('/api/instructor/remove-course', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeader },
           body: JSON.stringify({ courseId, instructorId }),
         });
-      } catch {}
+      } catch { }
     }
 
     if (isSupabaseConfigured()) {
@@ -6401,7 +6461,7 @@ export const dataProvider = {
           const allCourses = await this.getCourses();
           return allCourses;
         }
-      } catch {}
+      } catch { }
     }
 
     if (typeof window !== 'undefined') {
@@ -6410,7 +6470,7 @@ export const dataProvider = {
         if (json?.assignedCourses && json.assignedCourses.length > 0) {
           return json.assignedCourses;
         }
-      } catch {}
+      } catch { }
     }
 
     const courseIds = await this.getInstructorAssignedCourseIds(instructorId);
@@ -6451,7 +6511,7 @@ export const dataProvider = {
             totalSessions: sessions.length,
           };
         }
-      } catch {}
+      } catch { }
     }
 
     const assignedCourses = await this.getInstructorCourses(instructorId);

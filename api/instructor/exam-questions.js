@@ -1,11 +1,16 @@
-import { getAdminClient, sendJson } from '../_supabase.js';
+import { sendJson, requireUser } from '../_supabase.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return sendJson(res, 200, { ok: true });
   }
 
-  const adminClient = getAdminClient();
+  const auth = await requireUser(req, ['instructor', 'admin', 'super_admin']);
+  if (auth.error) {
+    return sendJson(res, auth.status || 401, { error: auth.error });
+  }
+
+  const adminClient = auth.adminClient;
 
   if (req.method === 'GET') {
     try {

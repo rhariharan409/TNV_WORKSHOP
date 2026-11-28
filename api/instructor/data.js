@@ -1,4 +1,4 @@
-import { getAdminClient, sendJson } from '../_supabase.js';
+import { sendJson, requireUser } from '../_supabase.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -9,66 +9,65 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, max-age=30');
 
   try {
-    const adminClient = getAdminClient();
+    const auth = await requireUser(req, ['instructor', 'admin', 'super_admin']);
+    if (auth.error) {
+      return sendJson(res, auth.status || 401, { error: auth.error });
+    }
+
+    const adminClient = auth.adminClient;
+    const isCallerAdmin = auth.role === 'admin' || auth.role === 'super_admin';
+
     const parsedUrl = new URL(req.url, 'http://localhost');
-    const instructorId = req.query?.instructorId || parsedUrl.searchParams.get('instructorId');
+    let instructorId;
+    if (isCallerAdmin) {
+      // Admins may pass instructorId
+      instructorId = req.query?.instructorId || parsedUrl.searchParams.get('instructorId');
+    } else {
+      // For instructors, ignore the instructorId query param and use the verified user id
+      instructorId = auth.user.id;
+    }
 
     // 1. Fetch assigned courses for this instructor
     let assignedCourseIds = [];
     let assignedCourses = [];
 
-    let isAdmin = false;
-    if (instructorId) {
-      const { data: profile } = await adminClient
-        .from('profiles')
-        .select('role')
-        .eq('id', instructorId)
-        .maybeSingle();
-      if (profile && (profile.role === 'admin' || profile.role === 'super_admin')) {
-        isAdmin = true;
+    // If caller is admin and did not specify a target instructor, or target is an admin, return all courses
+    let shouldReturnAllCourses = false;
+    if (isCallerAdmin) {
+      if (!instructorId || instructorId === auth.user.id) {
+        shouldReturnAllCourses = true;
+      } else {
+        const { data: targetProfile } = await adminClient
+          .from('profiles')
+          .select('role')
+          .eq('id', instructorId)
+          .maybeSingle();
+        if (targetProfile && (targetProfile.role === 'admin' || targetProfile.role === 'super_admin')) {
+          shouldReturnAllCourses = true;
+        }
       }
     }
 
-    if (isAdmin) {
+    if (shouldReturnAllCourses) {
       const { data: allCourses } = await adminClient
         .from('courses')
         .select('*')
         .order('created_at', { ascending: true });
       assignedCourses = allCourses || [];
       assignedCourseIds = assignedCourses.map((c) => c.id);
-    } else {
-      if (instructorId) {
-        const { data: ciList } = await adminClient
-          .from('course_instructors')
-          .select('course_id, course:courses(*)')
-          .eq('instructor_id', instructorId);
+    } else if (instructorId) {
+      const { data: ciList } = await adminClient
+        .from('course_instructors')
+        .select('course_id, course:courses(*)')
+        .eq('instructor_id', instructorId);
 
-        if (ciList && ciList.length > 0) {
-          assignedCourseIds = ciList.map((ci) => ci.course_id);
-          assignedCourses = ciList.map((ci) => ci.course).filter(Boolean);
-        }
-      }
-
-      if (assignedCourseIds.length === 0) {
-        const { data: allCourses } = await adminClient
-          .from('courses')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (allCourses && allCourses.length > 0) {
-          const pub = allCourses.filter((c) => c.is_published);
-          assignedCourses = pub.length > 0 ? pub : allCourses.slice(0, 1);
-          assignedCourseIds = assignedCourses.map((c) => c.id);
-
-          if (instructorId && assignedCourses[0]?.id) {
-            await adminClient
-              .from('course_instructors')
-              .upsert(
-                { course_id: assignedCourses[0].id, instructor_id: instructorId },
-                { onConflict: 'course_id,instructor_id' }
-              );
-          }
-        }
+      if (ciList && ciList.length > 0) {
+        assignedCourseIds = ciList.map((ci) => ci.course_id);
+        assignedCourses = ciList.map((ci) => ci.course).filter(Boolean);
+      } else {
+        // Instructor has no assigned courses: return empty list so "Request Course Assignment" screen displays
+        assignedCourseIds = [];
+        assignedCourses = [];
       }
     }
 
