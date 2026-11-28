@@ -19,6 +19,7 @@ import {
   GraduationCap,
   FolderGit2,
   Shield,
+  Menu,
 } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 
@@ -26,7 +27,7 @@ interface DashboardHeaderProps {
   onToggleSidebar?: () => void;
 }
 
-export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onToggleSidebar }) => {
   const { user, role, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -75,9 +76,32 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
   const displayEmail = (user?.email || '').replace(/materadmin/gi, 'masteradmin');
 
   return (
-    <header className="sticky top-0 z-30 h-16 w-full border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 px-4 sm:px-6 flex items-center justify-between gap-4">
-      {/* Search Input */}
-      <div className="flex-1 max-w-md hidden sm:block">
+    <header className="sticky top-0 z-30 h-16 w-full border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4">
+      {/* Mobile Drawer Toggle & Brand Badge */}
+      <div className="flex items-center gap-2 md:hidden shrink-0">
+        <button
+          onClick={onToggleSidebar}
+          className="p-2 -ml-1 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors active:scale-95"
+          aria-label="Toggle navigation drawer"
+          title="Open Menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center gap-1.5">
+          <img
+            src="/tnv-logo.png"
+            alt="TNV Logo"
+            className="w-7 h-7 rounded-full object-contain shrink-0 ring-1 ring-emerald-600/30 bg-white shadow-xs"
+          />
+          <span className="text-xs font-black tracking-tight text-[#0d4825] dark:text-white truncate">
+            TNV
+          </span>
+        </div>
+      </div>
+
+      {/* Search Input (Desktop) */}
+      <div className="flex-1 max-w-md hidden md:block">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -95,33 +119,39 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-3 ml-auto">
+      <div className="flex items-center gap-1.5 sm:gap-3 ml-auto shrink-0">
         {/* Prominent Admin Switcher Pill */}
         {isUserAdmin && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             {!isInAdminPortal ? (
               <Link
                 to="/admin/dashboard"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#1b6b3a] hover:bg-[#14532d] text-white text-xs font-bold shadow-md transition-all active:scale-95 animate-pulse hover:animate-none"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#1b6b3a] hover:bg-[#14532d] text-white text-xs font-bold shadow-md transition-all active:scale-95 animate-pulse hover:animate-none shrink-0"
+                title="Switch to Admin Console"
               >
-                <ShieldCheck className="w-4 h-4 text-emerald-200" />
-                <span>Switch to Admin Console</span>
+                <ShieldCheck className="w-4 h-4 text-emerald-200 shrink-0" />
+                <span className="hidden sm:inline">Switch to Admin Console</span>
+                <span className="sm:hidden text-[10px]">Admin</span>
               </Link>
             ) : (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                 <Link
                   to="/student/dashboard"
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+                  className="flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all shrink-0"
+                  title="Switch to Student View"
                 >
-                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Student View</span>
+                  <Eye className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="hidden sm:inline">Student View</span>
+                  <span className="sm:hidden text-[10px]">Student</span>
                 </Link>
                 <Link
                   to="/instructor/dashboard"
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+                  className="flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all shrink-0"
+                  title="Switch to Instructor View"
                 >
-                  <GraduationCap className="w-3.5 h-3.5 text-[#1b6b3a]" />
-                  <span>Instructor View</span>
+                  <GraduationCap className="w-3.5 h-3.5 text-[#1b6b3a] shrink-0" />
+                  <span className="hidden sm:inline">Instructor View</span>
+                  <span className="sm:hidden text-[10px]">Instructor</span>
                 </Link>
               </div>
             )}
@@ -191,7 +221,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = () => {
           </button>
 
           {profileDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-100 bg-white p-2 shadow-2xl dark:border-slate-800 dark:bg-slate-900 z-50">
+            <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-100 bg-white p-2 shadow-2xl dark:border-slate-800 dark:bg-slate-900 z-50">
               <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 rounded-xl mb-1">
                 <p className="text-xs font-black text-slate-900 dark:text-white">{displayName}</p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{displayEmail}</p>

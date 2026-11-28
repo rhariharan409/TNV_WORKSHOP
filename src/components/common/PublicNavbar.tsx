@@ -24,25 +24,25 @@ export const PublicNavbar: React.FC = () => {
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         {/* Brand Logo & Bilingual Header */}
-        <Link to="/" className="flex items-center gap-3 group select-none">
+        <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group select-none min-w-0 pr-2">
           <img
             src="/tnv-logo.png"
             alt="Tamil Nadu Volunteers"
-            className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-full bg-white shadow-sm ring-2 ring-brand-green/20 group-hover:scale-105 transition-transform duration-300 object-contain p-0.5"
+            className="h-10 w-10 sm:h-14 sm:w-14 shrink-0 rounded-full bg-white shadow-sm ring-2 ring-brand-green/20 group-hover:scale-105 transition-transform duration-300 object-contain p-0.5"
           />
-          <div className="leading-tight">
-            <div className="flex items-center gap-2">
-              <span className="font-display text-base sm:text-xl font-extrabold text-brand-green-dark dark:text-white tracking-tight">
+          <div className="leading-tight min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="font-display text-sm sm:text-xl font-extrabold text-brand-green-dark dark:text-white tracking-tight truncate">
                 Tamil Nadu Volunteers
               </span>
-              <span className="hidden sm:inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-yellow-tint text-amber-900 border border-brand-yellow/30 uppercase tracking-wider">
+              <span className="hidden sm:inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-yellow-tint text-amber-900 border border-brand-yellow/30 uppercase tracking-wider shrink-0">
                 Academy
               </span>
             </div>
             <span
               lang="ta"
               translate="no"
-              className="notranslate block font-display text-xs font-semibold text-brand-green dark:text-emerald-400 mt-0.5"
+              className="notranslate block font-display text-[10px] sm:text-xs font-semibold text-brand-green dark:text-emerald-400 mt-0.5 truncate"
             >
               தமிழ்நாடு தன்னார்வலர்கள் • Workshop Platform
             </span>

@@ -1044,7 +1044,7 @@ export const CourseView: React.FC = () => {
             {/* ======================================================== */}
             {/* LEFT COLUMN: CURRICULUM SYLLABUS DRAWER */}
             {/* ======================================================== */}
-            <div className="lg:col-span-4 xl:col-span-3 space-y-4">
+            <div className="order-2 lg:order-1 lg:col-span-4 xl:col-span-3 space-y-4">
               <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden sticky top-20">
                 <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1273,7 +1273,7 @@ export const CourseView: React.FC = () => {
             {/* ======================================================== */}
             {/* RIGHT COLUMN: MAIN CONTENT VIEWER (Full Width Theater View) */}
             {/* ======================================================== */}
-            <div className="lg:col-span-8 xl:col-span-9 space-y-5">
+            <div className="order-1 lg:order-2 lg:col-span-8 xl:col-span-9 space-y-5">
               {/* If Current Module is LOCKED */}
               {isCurrentModuleLocked ? (
                 <Card className="p-12 text-center space-y-4 border-2 border-dashed border-amber-300 dark:border-amber-900 bg-amber-50/30 dark:bg-amber-950/20">
